@@ -14,3 +14,6 @@ papers
 
 python/*
 !/python/*.gitkeep
+
+# exclude MATLAB scripts
+*.m
