@@ -1,0 +1,3 @@
+[submodule "stagedtrees"]
+	path = stagedtrees
+	url = https://github.com/Kaasiak/stagedtrees/
