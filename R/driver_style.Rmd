@@ -1,0 +1,142 @@
+---
+title: "New Driver Characteristics"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(bnlearn)
+library(stagedtrees)
+library(factoextra)
+library(psych)
+
+theme_set(theme_minimal())
+```
+
+```{r}
+df <- read.table("data/deq1.tab", sep = "\t", header = TRUE)
+
+d_questions <- list( 
+      D1 = c(178, 180, 177, 179, 145),
+      D2 = c(185),
+      D3 = c(316),
+      D4 = seq(245, 264),
+      D5 = c(237),
+      D6 = seq(188, 197),
+      D7 = seq(198, 206),
+      D8 = seq(207, 215),
+      D9 = seq(216, 225),
+      D10 = seq(238, 244),
+      D11 = c(150, 154, 155, 161, 174, 186, 288, 298, 302, 303, 304, 309)
+)
+      
+
+base_df <- df %>% 
+  select(sex, age = Age, miles = V00138, freq = V00160, acc_inv = accinv1, 
+         acc_n = naccs1, acacc_n = acacc1,
+         style1 = ds1, style2 = ds2, style3 = ds3,
+         Hazardscore, violations, errors, aggressiveviolations,
+         inexperience, slips)
+
+impute_missing <- function(x) {ifelse(x < 0, NA, x)}
+
+base_df <- data.frame(apply(base_df, 2, impute_missing))
+
+base_df<- base_df %>% mutate(sex = fct_recode(factor(sex), F = "1", M = "2"),
+         acc_inv = factor(acc_inv),
+         miles = miles * 2, # annualised milleage
+         ac_acc_inv = factor(ifelse(acacc_n == 0, 0, 1)),
+         freq_lab = fct_recode(factor(freq),
+                               "Everyday" = "1",
+                                "4-6 days per week" = "2",
+                                "1-3 days per week" = "3",
+                                "About a fortnight" = "4",
+                                "About once a month" = "5",
+                                "Less than once a month" = "6",
+                                "Never" = "7"
+                              ))
+
+df
+```
+
+```{r}
+colSums(is.na(df))
+```
+
+
+## Driving style
+
+```{r}
+style_df <- df[,paste0("V00", as.character(d_questions$D11))] %>%
+  apply(2, impute_missing) %>%
+  na.omit()
+
+fit <- factanal(style_df, 3, rotation="varimax")
+print(fit, digits=3, cutoff=.3, sort=TRUE)
+```
+
+```{r}
+style_df <- df[,c("ID", paste0("V00", as.character(d_questions$D11)))] %>%
+  apply(2, impute_missing)
+
+style_df <- style_df[rowSums(is.na(style_df)) < 6, ] %>%
+  replace(is.na(.), 4) %>%
+  as.data.frame() %>%
+  group_by(ID) %>%
+  mutate(style1 = sum(V00150, V00154, V00298, V00302) / 4,
+         style2 = sum(8-V00174, V00288, 8-V00303, V00309) / 4,
+         style3 = sum(V00155, V00161, V00186, V00304) / 4)
+
+get_style <- function(x) {
+  min(which(x == max(x)))
+}
+
+style_df[,"style"] <- apply(style_df[,c("style1", "style2", "style3")], 1, get_style)
+```
+
+```{r}
+base_df <- df %>% select(ID, sex, age = Age, miles = V00138, 
+                         freq = factor("V00160"), acc_inv = factor("accinv1"),
+                         confidence = factor("V00316"), speed = factor("V00237")) %>%
+  left_join(style_df[,c("ID", "style")], by = "ID") %>%
+  apply(2, impute_missing) %>%
+  as.data.frame() %>%
+  filter(freq != 7) %>%
+  mutate(age_group = cut(age, breaks = c(-Inf, 18, 20, 25, Inf)),
+         sex = fct_recode(factor(sex), F = "1", M = "2"), 
+         style = factor(style),
+         confidence = factor(confidence),
+         acc_inv = factor(acc_inv),
+         speed = factor(speed))
+
+#table(base_df %>% select(age_group, sex, style, speed))
+```
+
+```{r}
+mod_df <- base_df %>% 
+  filter(freq %in% c(1,2)) %>%
+  select(sex, age_group, confidence, acc_inv) %>%
+  na.omit()
+
+bn <- bnlearn::hc(mod_df, score = "aic", 
+                  blacklist = data.frame(from = c("sex", "age_group"), 
+                                         to = c("age_group", "sex")))
+plot(bn)
+```
+
+
+```{r}
+order = c("age_group", "sex", "confidence", "acc_inv")
+mod1 <- mod_df %>%
+  indep(order = order, join_unobserved = FALSE, lambda = 1) %>%
+  stages_hc()
+
+barplot(mod1, var = "acc_inv")
+plot(mod1)
+plot(ceg(mod1))
+```
+

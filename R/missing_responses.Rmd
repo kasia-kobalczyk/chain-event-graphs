@@ -1,0 +1,203 @@
+---
+title: "missingnes.Rmd"
+author: "Katarzyna Kobalczyk"
+date: "07/09/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+#knitr::opts_chunk$set(echo = TRUE, fig.width = 12, fig.height = 8)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(bnlearn)
+library(scales)
+library(stagedtrees)
+library(tree)
+
+theme_set(theme_minimal())
+```
+
+```{r, include=TRUE}
+df_full <- read.table("data/unified_database_2014.tab", sep = "\t", header = TRUE)
+
+impute_missing <- function(x) {ifelse(x < 0, NA, x)}
+
+df <- df_full %>% 
+  select(ID, sex = Sex_all, age = Age_all,
+         freq1 = t1_a1,
+         freq2 = t2_a1,
+         freq3 = t3_a1,
+         freq4 = t4_a1 ) %>%
+  apply(2, impute_missing) %>%
+  as.data.frame() %>%
+  mutate(sex = fct_recode(factor(sex), F = "0", M = "1"),
+         miss1 = factor(if_else(is.na(freq1), "yes", "no")),
+         miss2 = factor(if_else(is.na(freq2), "yes", "no")),
+         miss3 = factor(if_else(is.na(freq3), "yes", "no")),
+         miss4 = factor(if_else(is.na(freq4), "yes", "no")))
+
+head(df)
+```
+
+```{r}
+order <- c("sex", "miss1", "miss2", "miss3", "miss4")
+
+temp_df <- df %>%
+  filter(!is.na(sex)) %>%
+  select(order) %>%
+  rename_at(vars(order), ~ c("sex", "1", "2", "3", "4")) %>%
+  gather("wave", "is_missing", -sex) 
+
+# Number of non missing responses by waves
+temp_df %>%
+  filter(is_missing == "no") %>%
+  ggplot(aes(x = wave, fill = sex)) + 
+  geom_bar() + 
+  ggtitle("Number of respondents per wave")
+
+# Proportion of missing values by sex
+temp_df %>%
+  ggplot(aes(x = sex, fill = is_missing)) + 
+  geom_bar(pos = "fill") + 
+  facet_wrap(~wave)
+```
+
+```{r}
+mod_df <- df %>%
+  select(order) %>%
+  na.omit()
+
+bn <- bnlearn::hc(mod_df, score = "bic")
+plot(bn)
+```
+
+## Testing different hypothesis
+
+```{r}
+#mod_df <- mod_df %>% filter(sex == "F")
+```
+
+```{r}
+get_BIC <- function(n, k, ll) {
+  k * log(n) - 2 * ll
+}
+
+# Independent bernoulli trials, order doesn't matter
+count <- mod_df %>%
+  select(miss1, miss2, miss3, miss4) %>%
+  gather() %>%
+  select(value) %>%
+  table()
+
+theta <- count / sum(count)
+n <- nrow(mod_df)
+ll <- sum(count * log(theta))
+df <- 1
+
+mod0 <- list(df = df, ll = ll, BIC = get_BIC(n, df, ll))
+```
+
+```{r}
+# Independent model, every trial has it's own theta
+counts <- mod_df %>%
+  select(miss1, miss2, miss3, miss4) %>%
+  gather() %>%
+  table()
+
+theta <- counts / rowSums(counts)
+ll <- sum(counts * log(theta))
+df <- 4
+
+mod1 <- list(df = df, ll = ll, BIC = get_BIC(n, df, ll))
+```
+
+```{r}
+# Misingness of the next depends on the number of currently missing values 
+# and the order
+
+## The same done with joining the stages
+full_mod <- full(mod_df %>% select(miss1, miss2, miss3, miss4))
+mod2 <- join_stages(full_mod, "miss3", "2", "3")
+mod2 <- join_stages(mod2, "miss4", "6", "7")
+mod2 <- join_stages(mod2, "miss4", "4", "6")
+mod2 <- join_stages(mod2, "miss4", "2", "3")
+mod2 <- join_stages(mod2, "miss4", "2", "5")
+plot(mod2)
+
+temp_df <- mod_df %>%
+  mutate(miss1 = c(0,1)[miss1], 
+         miss2 = c(0,1)[miss2],
+         miss3 = c(0,1)[miss3],
+         miss4 = c(0,1)[miss4],
+         n1 = miss1,
+         n2 = n1 + miss2,
+         n3 = n2 + miss3,
+         n4 = n3 + miss4)
+
+# prob of missing in wave 1
+theta1 <- table(temp_df$miss1)
+theta1 <- theta1 / sum(theta0)
+
+# prob of missing in wave 2
+theta2 <- temp_df %>% 
+  select(n1, miss2) %>%
+  table()
+theta2 <- theta2 / rowSums(theta2)
+
+# prob of missing in wave 3
+theta3 <- temp_df %>% 
+  select(n2, miss3) %>%
+  table()
+theta3 <- theta3 / rowSums(theta3)
+
+# prob of missing in wave 4
+theta4 <- temp_df %>% 
+  select(n3, miss4) %>%
+  table()
+theta4 <- theta4 / rowSums(theta4)
+
+get_prob <- function (n1, n2, n3, n4) {
+  theta1[n1 + 1] * theta2[n1 + 1, n2 - n1 + 1] * theta3[n2 + 1, n3 - n2 + 1] * theta4[n3 + 1, n4 - n3 + 1]
+}
+
+probs <- mapply(get_prob, temp_df$n1, temp_df$n2, temp_df$n3, temp_df$n4)
+ll <- sum(log(probs))
+df <- nrow(rbind(theta1, theta2, theta3, theta4))
+mod2 <- list(df = df, ll = ll, BIC = get_BIC(n, df, ll))
+```
+
+```{r}
+# Stage, number of missing, and previous missing
+full_mod <- full(mod_df %>% select(miss1, miss2, miss3, miss4))
+mod3 <- join_stages(full_mod, "miss4", "4", "6")
+mod3 <- join_stages(mod3, "miss4", "3", "5")
+plot(mod3)
+
+mod3 <- list(df = attr(mod3$ll, "df"), ll =  mod3$ll, BIC(mod3))
+```
+
+```{r}
+order <- c("miss1", "miss2", "miss3", "miss4")
+full_mod <- full(mod_df %>% select(order))
+best_mod <- stages_bhc(full_mod) 
+plot(best_mod)
+
+best_mod <- list(df = attr(best_mod$ll, "df"), ll =  best_mod$ll, BIC(best_mod))
+full_mod <- list(df = attr(full_mod$ll, "df"), ll =  full_mod$ll, BIC(full_mod))
+
+rbind(unlist(mod0), unlist(mod1), unlist(mod2), unlist(mod3), unlist(full_mod), unlist(best_mod))
+```
+
+
+## Multistage merging
+
+```{r}
+# Multistage merging
+full_mod <- full(mod_df[,c("miss1", "miss2", "miss3", "miss4")])
+full_mod
+
+mod_df %>%
+  mutate(stage1 = "miss1")
+```
+

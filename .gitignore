@@ -11,8 +11,6 @@
 
 papers
 
-R/*
-!/R/*.gitkeep
 
 python/*
 !/python/*.gitkeep

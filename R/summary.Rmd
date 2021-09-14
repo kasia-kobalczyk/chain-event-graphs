@@ -1,0 +1,809 @@
+---
+title: "Accident Modelling with CEGs - summary"
+author: "Kasia Kobalczyk"
+date: "26/08/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.width = 12, fig.height = 8)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(bnlearn)
+library(scales)
+library(stagedtrees)
+library(tree)
+
+theme_set(theme_minimal())
+```
+
+## Intro
+
+The subject of this analysis is a series of surveys conducted by the British
+Department for Transport: *Cohort II: A Study of Learner and New Drivers*. 
+
+*Cohort II* was a major six-year study, providing a picture of how 'cohorts' of 
+learner drivers in Great Britain undertake driver training and testing, and of 
+their subsequent experiences as new drivers. The aims of the study were: 
+
+1. To investigate how people learn to drive, (number of hours of tuition
+and practice, and to compare this to outcomes from the theory and practical 
+driving tests; 
+
+2. To assess the impact of changes to the testing regime, specifically the 
+hazard perception test which was introduced during the period of study; 
+
+3. To explore new drivers' experiences and attitudes to driving;
+
+4. To identify their level of accident involvement over time.
+
+
+The report on this study can be found [here](https://webarchive.nationalarchives.gov.uk/ukgwa/+/http://www.dft.gov.uk/pgr/roadsafety/research/rsrr/theme2/cohort2/cohrtiimainreport.pdf)
+
+The report includes an enormous amount of tables and barplots summarising the survey results. 
+It additionally includes a linear regression model for predicting the accident liability. The goal of my 
+research is to utilise Chain Event Graphs in order to present the results of the 
+study (and potentially discover new insights) in a much more consise manner.
+
+Points which I want to address (to be extended):
+
+ - Translate the *base* linear regression model for predicting the accident 
+ involvment into the framework of CEGs 
+ 
+ - Add extra variables to the base model to investigate the influence
+ of other factors (such as inclusion of the Hazard Perception test or the 
+ Driving Style) on the accident liability
+ 
+ - Investigate the missing values. Is it plausible to assume that 
+ the responses are missing at random ?
+ 
+ 
+## The Base Model
+
+Variables included in the base linear regression model from the report:
+
+- `sex`
+
+- `age` - age at which the respondent passed the practical driving test
+
+- `exposure` - annualised number of miles driven + 10 x the annualised number of days on which the driver has driven
+
+- `accident liability`- annualised number of accidents
+
+The *base* linear regression model from the study separately considers each 
+period after passing the driving test: 0-6, 7-12, 13-24 and 25-36 months, 
+treating every period as an independent dataset.
+Later, by the means of comparing the coefficients of a given variable across 
+different periods conclusions are made.
+
+In our first attempt to CEG modelling we will only consider the first period of 
+up to 6 months after passing the driving test.
+
+```{r, include=TRUE}
+df_full <- read.table("../data/tab/unified_database_2014.tab", sep = "\t", header = TRUE)
+
+impute_missing <- function(x) {ifelse(x < 0, NA, x)}
+
+df <- df_full %>% 
+  select(ID, sex = Sex_all, age = Age_all, miles = t1_a2, freq = t1_a1, 
+         nlacc1 = t1_nlacc_orig, hp =  t0_takeHP) %>%
+  apply(2, impute_missing) %>%
+  as.data.frame() %>%
+  mutate(sex = fct_recode(factor(sex), F = "0", M = "1"),
+         hp = factor(hp),
+         acc_inv = factor(case_when(
+           is.na(nlacc1)  ~ NA_character_, 
+           nlacc1 >= 1 ~ "1+",
+           TRUE ~ "0")),
+         miles = if_else(freq == "7", 0, miles),
+         freq_lab = fct_recode(factor(freq),
+                              "Everyday" = "1",
+                              "4-6 days per week" = "2",
+                              "1-3 days per week" = "3",
+                              "About a fortnight" = "4",
+                              "About once a month" = "5",
+                              "Less than once a month" = "6",
+                              "Never" = "7")
+  )
+
+head(df)
+```
+
+### EDA
+
+Before moving to CEG modelling we first include a short section on exploratory 
+data analysis with several plots summarising the data.
+
+```{r, warning=FALSE}
+df %>% 
+  na.omit() %>%
+  ggplot(aes(x = sex, fill = sex)) + 
+  geom_bar() + 
+  ggtitle("Count of the respondents by sex")
+
+df %>% ggplot(aes(x = age)) +
+  geom_histogram(binwidth = 2, fill = "white", colour = "black") +
+  ggtitle("Distribution of Age", 
+          subtitle = "(age of passing the practical test)")
+df %>% 
+  filter(!is.na(freq)) %>%
+  ggplot(aes(x = freq_lab)) + 
+  geom_bar() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) + 
+  xlab("frequency") + 
+  ggtitle("Frequency of driving in the first 6 months",
+          subtitle = "Distribution of the responses")
+
+df %>% 
+  filter(!is.na(freq)) %>%
+  ggplot(aes(x = sex, fill = freq_lab)) + 
+  geom_bar(position = "fill") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) + 
+  xlab("frequency") + 
+  ylab("proportion") + 
+  ggtitle("Frequency of driving in the first 6 months",
+          subtitle = "Proportions of the responses by sex")
+
+n_obs <- sum(!is.na(df$miles))
+  
+df %>% 
+  mutate( miles = miles * 2,
+    bins = cut(miles, c(-Inf, 0, 1000, 5000, 10000, 15000, Inf))
+    ) %>%
+  group_by(bins) %>%
+  count() %>%
+  ggplot(aes(x = bins, y = n/n_obs * 100)) + 
+  geom_bar(stat = "identity") + 
+  ylab("% of respondents") + 
+  xlab("Annualised mileage") + 
+  ggtitle("Anualised mileage", subtitle = "including never-driving and missing responses")
+
+df %>%
+  filter(!is.na(miles) & !is.na(freq)) %>%
+  filter(!(abs(miles - median(miles) > 2*sd(miles)))) %>%
+  ggplot(aes(x = freq_lab, y = miles)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) + 
+  xlab("Frequency of driving in the first 6 months") + 
+  ylab("Annualised milleage") + 
+  ggtitle("Milleage vs. frequency", subtitle = "extreme values removed") + 
+  scale_y_continuous(trans = "log1p")
+```
+```{r}
+temp_df <- df %>%
+  filter(freq != 7) %>%
+  mutate(nlacc1 = if_else(is.na(nlacc1), "NA", as.character(nlacc1)), 
+         age_group = cut(age, breaks = c(16, 18, 20, 25, 30, Inf)))
+
+temp_df %>% 
+  ggplot(aes(x = nlacc1)) +
+  geom_bar() +
+  xlab("Number of accidents in the first 6 months")
+
+temp_df %>%
+  filter(!is.na(sex)) %>%
+  ggplot(aes(x = sex, fill = acc_inv)) +
+  geom_bar(position = "fill") + 
+  ggtitle("Accident involvement by sex") + 
+  ylab("Proportion of respondents")
+
+temp_df %>%
+  filter(!is.na(age) & acc_inv != "NA") %>%
+  ggplot(aes(x = age_group, fill = acc_inv)) +
+  geom_bar(position = "fill") + 
+  ggtitle("Accident involvement by age") + 
+  ylab("Proportion of respondents")
+
+table(temp_df %>% select(age_group, sex, acc_inv))
+```
+### Staged Trees and Chain Event Graphs
+
+To translate this analysis into a discrete space suitable for staged 
+tree and CEG modelling we look at the accident liability as a binary variable: 
+
+- 0 - no accidents in the first 6 months
+
+- 1 - one or more accident in the first 6 months
+
+The continuous variables (age and miles) should also be split into bins. 
+(How to do this in a most *optimal* way is a subject of later discussion).
+
+The original *base* linear regression model instead of including 
+frequency and miles as two separate features combines them into one measure 
+called `exposure`, which is defined as the annualised number of miles driven 
++ 10 x the annualised number of days on which the driver has driven. This measure 
+was artificially derived to *"optimise the fit of models"* and is
+probably not the best in terms of model interpretability. Hence, we shall decide 
+whether to use the mileage or the frequency only, or try to combine both into one 
+variable which would be easier to interpret than the proposed `exposure` measure.
+
+We begin by fitting several staged trees and CEGs with numerical variables split 
+into roughly equally sized bins. 
+
+```{r}
+# Find bins of equal size
+unique(cut_number(df$age, 4))
+```
+
+For simplicity we will use the following age groups:
+
+- `(16-18]`
+
+- `(18-19]`
+
+- `(19-25]`
+
+- `(25,80]`
+
+We drop the records with any missing values and do not include new drivers who 
+selected *"Never"* as their frequency of driving in the period of first 6 months.
+
+```{r}
+mod_df <- df %>%
+  filter(freq != 7) %>%
+  mutate(age_group = cut(age, c(16, 18, 19, 25, 80))) %>%
+  drop_na(sex, age, miles, freq, acc_inv)
+```
+
+#### Age, sex, frequency 
+
+Due to a small number of responses for driving frequency less than once a week, 
+we will only distinguish between the following levels of frequency coded as:
+
+- 1 = Everyday
+
+- 2 = 4-6 days per week
+
+- 3 = 1-3 days per week
+
+- 4 = Occasionally (less than once a week)
+
+```{r}
+mod_freq_df <- mod_df %>%
+  mutate(freq = if_else(freq %in% c(1,2,3), as.character(freq), "4"),
+         freq = factor(freq)) %>%
+  select(age_group, sex, freq, acc_inv)
+```
+
+We begin by fitting a Bayesian Network on the 4 variables of interest
+
+```{r}
+par(mfrow = c(1,3))
+freq_bn1 <- bnlearn::hc(mod_freq_df, score = "bic")
+plot(freq_bn1)
+
+freq_bn2 <- bnlearn::hc(mod_freq_df, score = "aic")
+plot(freq_bn2)
+
+freq_bn3 <- bnlearn::hc(mod_freq_df, score = "aic", blacklist = data.frame(from = c("acc_inv"), to = c("sex")))
+plot(freq_bn3)
+
+order <- c("age_group", "sex", "freq", "acc_inv")
+```
+
+```{r, include=FALSE, echo=FALSE}
+#Staged Tree representation of the BN
+bn_to_tree <- function(bn, data) {
+  bn_tree <- as_sevt(bn.fit(bn, data = data))
+  bn_tree <- sevt_fit(bn_tree, data = data)
+  
+  bn_tree
+}
+
+bn1_freq <- bn_to_tree(freq_bn1, mod_freq_df)
+bn2_freq <- bn_to_tree(freq_bn2, mod_freq_df)
+bn3_freq <- bn_to_tree(freq_bn3, mod_freq_df)
+```
+
+The best scoring Bayesian Network according to BIC suggest that accident 
+involvement is independent of sex and frequency given the age group.
+The best scoring Bayesian Network according to AIC suggest the ordering of variables: 
+age, frequency, accidents, sex which is not necessarily the most intuitive and useful 
+for the purpose of our model. 
+If we additionally impose that the edge from `acc_inv` to `sex` is not allowed, 
+the best scoring BN according to AIC results in the order: age, sex, frequency, accidents.
+According to this model, given the age group accident involvement is additionally 
+dependent on the frequency, but again assumed to be independent of age.
+
+To further investigate thee dependency of sex on accident involvement, we fit 
+the staged tree with the ordering: age, sex, frequency, accidents.
+
+```{r}
+mod1_freq <- mod_freq_df %>%
+  indep(order = order, join_unobserved = TRUE) %>%
+  stages_hc()
+
+plot(mod1_freq)
+barplot(mod1_freq, var = "acc_inv")
+plot(ceg(mod1_freq))
+```
+The first staged tree fitted with the Hill Climbing algorithm confirms 
+that the frequency of driving is independent of sex given the age group.
+However, it additionally reveals the differences in accident liability between female and 
+male drivers of the same age. 
+
+
+#### Age, sex, mileage
+
+Now, instead of using the frequency of driving we consider the annualised mileage.
+
+```{r}
+unique(cut_number(mod_df$miles * 2, 4))
+```
+
+```{r}
+mod_miles_df <- mod_df %>%
+  mutate(
+    miles = miles * 2,
+    mileage = case_when(
+      miles <= 1500 ~ 4,
+      miles > 1500 & miles <= 4000 ~ 3,
+      miles > 4000 & miles < 8000 ~ 2,
+      TRUE ~ 1
+    ),
+    mileage = factor(mileage),
+    ) %>%
+  select(age_group, sex, mileage, acc_inv)
+```
+
+As before we begin by fitting a Bayesian Network on the 4 variables of interest
+
+```{r}
+par(mfrow = c(1,2))
+miles_bn1 <- bnlearn::hc(mod_miles_df, score = "bic")
+plot(miles_bn1)
+
+miles_bn2 <- bnlearn::hc(mod_miles_df, score = "aic")
+plot(miles_bn2)
+```
+This time both Bayesian Networks suggest the same ordering of variables: 
+age, sex, mileage, accidents. We fit the staged tree according to this ordering
+
+```{r, include=FALSE, echo=FALSE}
+# Staged Tree representation of the Bayesian Network
+bn1_miles <- bn_to_tree(miles_bn1, mod_miles_df)
+bn2_miles <- bn_to_tree(miles_bn2, mod_miles_df)
+```
+
+```{r}
+order <- c("age_group", "sex", "mileage", "acc_inv")
+
+mod1_miles <- mod_miles_df %>%
+  indep(order = order, join_unobserved = TRUE) %>%
+  stages_hc()
+
+plot(mod1_miles)
+barplot(mod1_miles, var = "acc_inv")
+```
+
+### Frequecny and mileage model comparison
+
+Let us now compare the competing models according to BIC and AIC
+
+```{r}
+cbind(BIC(bn1_freq, bn2_freq, bn3_freq, mod1_freq, 
+          bn1_miles, bn2_miles, mod1_miles),
+      AIC = AIC(bn1_freq, bn2_freq, bn3_freq, mod1_freq, 
+                bn1_miles, bn2_miles, mod1_miles)$AIC)
+```
+
+Both staged tree models `mod1_freq` and `mod1_miles` score significantly better 
+in terms of BIC and AIC, than their Bayesian Network alternatives.
+The staged tree model `mod1_freq` has the lowest BIC and AIC among all models.
+
+Although a different ordering of variables is not supported by the BN we may 
+want to try rearrange the variables.
+
+```{r}
+order2 <- c("freq", "age_group", "sex", "acc_inv")
+mod2_freq <- mod_freq_df %>%
+  indep(order = order2, join_unobserved = TRUE) %>%
+  stages_hc()
+
+plot(mod2_freq)
+barplot(mod2_freq, var = "acc_inv")
+```
+In this ordering of the variables the differences between male and female drivers 
+of the same age group are more exposed and easier to compare. The staged tree 
+allows us to quickly identify the age groups for which the positions in accident 
+involvement differ for men and women of the same age. These are everyday drivers 
+aged 16-19 and drivers with frequency of 1-3 days per week aged 16-18 or 25+.
+
+Since we are less interested in the conditional dependence of 
+sex and age we may also use only one variable to describe these two characteristics, which will result in a more shallow tree.
+
+```{r}
+mod_freq_df <- mod_freq_df %>%
+  mutate(age_sex = factor(paste0(age_group, "-", sex)))
+
+mod3_freq <- mod_freq_df %>%
+  indep(join_unobserved  = TRUE, order = c("age_sex", "freq", "acc_inv")) %>%
+  stages_hc()
+
+plot(mod3_freq)
+barplot(mod3_freq, "acc_inv")
+```
+
+## Extending the Base Model
+
+### Hazard Perception
+
+In this section we want to look at how the addition of the Hazard Perception 
+component into the the driving test influences the accident liability. 
+We therefore introduce into the model a new binary variable `hp` indicating whether 
+a respondent took the Hazard Perception test.
+
+Not to consider the impact of exposure, we will only look at the 
+the respondents with the same frequency of driving - "Everyday"
+
+```{r}
+mod_hp_df <- df %>%
+  filter(freq == "1") %>%
+  mutate(age_group = cut(age, c(16, 18, 19, 25, 80)),
+         age_sex = paste0(age_group, "-", sex),
+         freq = factor(freq),
+         hp = factor(hp)) %>%
+  select(age_sex, hp, acc_inv) %>%
+  na.omit()
+
+mod_hp <- mod_hp_df %>%
+  indep() %>%
+  stages_hc()
+
+plot(mod_hp)
+barplot(mod_hp, var = "acc_inv")
+plot(ceg(mod_hp))
+```
+If taking the HP test had a major impact on the accident involvement we would 
+expect that for many nodes on the HP level the edges in the CEG emanating from 
+them would lead to different stages on the accident involvement level.
+This however is not the case, as most of the edges lead to the same stage. For 
+those that do not, the results are ambiguous. If we make  the bold assumption of 
+the relation being casual, then taking the HP results in a lower accident 
+liability for male drivers aged 19-25 but at the same time it also results 
+in a higher accident liability for female drivers aged 16-18. 
+For all other sex-age groups of respondents the differences resulting from taking 
+the HP test are not captured by this model. 
+However, choosing a different algorithm for fitting the tree might lead us to 
+different conclusions.
+
+### Missing Miles
+
+```{r}
+df %>%
+  filter(freq != 7) %>%
+  select(age, sex, miles, acc_inv) %>%
+  is.na() %>%
+  colSums()
+```
+
+For 775 respondents the self-reported mileage is missing. 
+Can we hypothesise the missingness of this value to be random ? 
+
+Let $X_s$ describe the sex, $X_a$ age group, $X_m$ mileage (low or high) and 
+$Y$ the accident involvement. $X_m$ has missing values, let $R_m$ be the 
+variable indicating whether $X_m$ is missing or not. We fit two staged trees: 
+one with ordering $(X_s, X_a, R_m, X_m, Y)$ and one with the ordering $(X_a, X_s, R_m, X_m, Y)$.
+
+```{r}
+mod_mis_df <- df %>%
+  filter(freq != 7) %>%
+    mutate(age_group = cut(age, c(16, 18, 19, 25, 80)),
+           age_sex = paste0(sex, "-", age_group),
+           is_missing = if_else(is.na(miles), "yes", "no"),
+           miles = miles * 2,
+           mileage = case_when(
+            is.na(miles) ~ "NA",
+            miles <= 4000 ~ "low",
+            miles > 4000 ~ "high"),
+           ) %>%
+  filter(!is.na(acc_inv)) %>%
+  select(sex, age_group, age_sex, is_missing, mileage, acc_inv)
+
+mod_mis1 <- mod_mis_df %>%
+  full(join_unobserved = TRUE, order = c("sex", "age_group", "is_missing", "mileage", "acc_inv")) %>%
+  stages_bhc()
+
+plot(mod_mis1)
+
+mod_mis2 <- mod_mis_df %>%
+  full(join_unobserved = TRUE, order = c("age_group", "sex", "is_missing", "mileage", "acc_inv")) %>%
+  stages_bhc()
+
+plot(mod_mis2)
+```
+**MCAR**
+
+If the probability of $X_m$ missing is the same for all age-sex groups, 
+then the data are said to be missing completely at random (MCAR). This would 
+require that $R_m$ is independent of $X_s$ and $X_a$ and we would expect all nodes 
+corresponding to  the $R_m$ variable to be in the same stage. 
+This is not the case as in the two trees above we can distinguish 3 different 
+stages for $R_m$ which correspond to the following groups of respondents: 
+all men, women under 19, and women 19+.
+Hence, the assumption that the data are MCAR is unlikely to hold. 
+
+However, the data can be missing at random (or not) only conditionally on certain 
+values of another variable. 
+From the first staged tree we can observe that all $R_m$ nodes for men are in
+the same stage (green) and so we can deduce that $R_m \perp  X_a | X_s = M$. 
+That is, conditionally on the respondent being a male, the missingness of the mileage 
+is independent of their age.
+
+If we were to hypothesise that among certain age groups, say the youngest drivers 
+aged 16-18 the missingness of mileage is independent of sex that is 
+$R_m \perp  X_s | X_a = (16,18]$, then the two edges emanating from the node 
+corresponding to the 16-18 age group would lead to the same stage. 
+Again, this is not the case as the edges lead to two different stages (black and red). 
+The hypothesis that the mileage is independent of sex, even conditionally on a 
+certain age group is therefore unlikely to be true.
+
+```{r}
+par(mfrow = c(1,2))
+plot(mod_mis1)
+barplot(mod_mis1, var = "is_missing")
+```
+By looking at the probabilities for missingness of the 
+miles we can immediately observe that women are noticeably more likely not 
+to provide the estimated mileage than men, and further that among female drivers 
+the younger respondents (below the age of 20) are even more likely not to answer the question on mileage.
+
+**MAR**
+
+When data are MAR the missingness process is independent of the missing values 
+given the observed values, so that $P(R_m | X_s, X_a, X_m) =  P(R_m | X_s, X_a)$. 
+Under the assumption of MAR, we would expect the leaf 
+nodes corresponding to the missing category of mileage to be in the stage 
+whose predictive probability of accident involvement is a weighted average of the predictive 
+probabilities of accident involvement for low and high mileage in a given age-sex groups. 
+This again is not the case. For all men aged 16-25 the missing mileage coincides 
+with the position of high mileage. While for women aged 18-19 and 25+ the missing 
+mileage is associated with the same position as low mileage. To determine whether
+this means that data are unlikely to be MAR, it is necessary to additionally calculate 
+the weighted average of the probability of an accident and compare this with 
+the true probability of an accident for the missing category given an age-sex group.
+
+If we assume that the data are MAR,then we would expect the accident probability 
+conditional on a particular age-sex group to be the average of the accident
+probability for individuals of that group with a high or low mileage, weighted 
+according to the proportion of individuals with high or low mileage.  
+On the example of male drivers aged 18-19, under the staged tree model from above
+the predictive probability of an accident is 13.8% and 4.6% given high and low 
+mileage respectively. Hence, if the data are MAR a young man aged 16-18 for whom 
+the mileage is missing should have an accident probability of 
+$13.8 × (281/543) + 4.6 × (262/543) = 9.36%$ where 281 young man reported high 
+mileage and 262 reported low mileage. However, we see that the edges describing 
+the missingness lead to the same position as for high mileage whose predictive 
+probability of an accident is higher (13.8%). Therefore the data are unlikely to be MAR.
+
+```{r}
+mod_mis3 <- mod_mis_df %>%
+  full(join_unobserved = TRUE, order = c("age_sex", "mileage", "acc_inv")) %>%
+  stages_bhc()
+
+plot(mod_mis3)
+barplot(mod_mis3, "acc_inv")
+
+table(mod_mis_df[ ,c("age_sex", "mileage")] %>% filter(age_sex == "M-(18,19]"))
+summary <- summary(mod_mis3)
+round(summary$stages.info$acc_inv[c("0", "1+")]*100, 1)
+```
+
+
+In the above we only looked into the missingness of miles. This can be further 
+extended to additionally analyse the missingness of the target variable, 
+i.e. the accident involvement.
+
+## Discretizing the continuous variables
+
+In all previous models we used categories of age and milleage with roughly equal
+number of respondents in each group.
+My key question of interest is: What is the most *optimal* way of dividing a continuous 
+variable (in this case age or miles driven) into several bins to achieve a model 
+which best *fits the data*? What should we understand as an *optimal* fit?
+There is a number of possibilities here which I would like to explore, 
+abstracting away from this particular data set and considering the problem 
+in its greater generality. 
+
+**Formulation 1:**
+Consider a vector $\mathbf{X} = \{X_1, \ldots, X_j, \ldots, X_m\}$ with an ordering 
+$X_1 \prec \ldots \prec X_m$. Suppose that $X_j$ is a continuous random variable 
+for some $j = 1, \ldots, m-1$. Let $f_j(x)$ be the pdf of $X_j$ defined on the 
+interval $[a, b]$. Let the set of points $a = p_0 < \ldots < p_N = b$ be a 
+partition of $[a, b]$ into $N$ subintervals $I_n = [p_{n-1}, p_n]$. 
+Define $\tilde{X_j}$ to be the *"discretization"* of $X_j$ with the set of possible 
+outcomes $I_1, \ldots, I_N$ and pmf:
+$$\mathbb{P}(\tilde{X_j} = I_n) = \mathbb{P}(X_j \in I_n)  = \int_{p_{n-1}}^{p_n}f_j(x)dx$$
+Given $N \in \mathbb{N}$, we wish to find the best partition $P_N$ such that 
+the SCEG defined on $\mathbf{\tilde{X}} = \{X_1, \ldots, \tilde{X_j}, \ldots, X_m\}$ 
+is the best scoring SCEG according to some optimality criterion (Like the BIC).
+
+In our example we start with age as a continuous random variable and as the 
+question of where to set the thresholds between the different categories of 
+age groups to split age into $N$ bins.
+
+
+**Formulation 2:**
+Consider a vector $\mathbf{X} = \{X_1, \ldots, X_m\}$ with an ordering 
+$X_1 \prec \ldots \prec X_m$. Suppose that $X_j$ is a discrete random variable 
+with $K$ possible outcomes $\Omega = \{\omega_1, \ldots, \omega_K\}$, 
+where the value of $K$ is large. Suppose we are given $N \in \mathbb{N}$ with 
+$N \ll K$. We wish to find a partition of $\Omega$ into $N$ classes 
+$C_1, \ldots, C_N$ and define a new, *"coarser"* random variable $\tilde{X_j}$ 
+with pmf $$\mathbb{P}(\tilde{X_j} = C_n) = \sum_{\omega_i \in C_n}\mathbb{P}(X_j  = \omega_i)$$
+
+In the case when the outcomes $\omega_1, \ldots, \omega_K$ admit a natural 
+ordering $\omega_1 \prec \ldots \prec \omega_K$ we further require that every 
+class consists of a series of *consecutive* outcomes. That is if
+$\omega_{i}, \omega_{j} \in C_n$ with $i < j$, then $\omega_k \in C_n$ for all 
+$k = i+1, \ldots, j-1$ 
+
+We wish to find the best partition of $\Omega$ into $N$ classes such that the 
+SCEG defined on $\mathbf{\tilde{X}} = \{X_1, \ldots, \tilde{X_j}, \ldots, X_m\}$ 
+is the best scoring SCEG according to some optimality criterion (Like the BIC).
+
+In our example, we may start by treating age as a random variable with say 65 
+categories: 16, 17, 18, ... , 80 and we want to "merge" some of the age groups 
+together to obtain a more reasonable number of age groups.
+Since age is a variable with a natural ordering of outcomes we will additionally require 
+that if say 20- and 23-year-olds belong to the same age group, then so are 
+the people aged 21 and 22. 
+
+
+**Other ideas and thoughts:**
+
+- Since we are most interested in examining the differences between 
+  characteristics of respondents with lower and higher accident liability we may 
+  want to define the categories of age in such a way that the differences in 
+  probability distributions of accident involvement between are maximised.
+  In this approach measures like Information Gain / Kullback-Leibler divergence 
+  may become useful.
+
+  We could for example start with a continuously distributed random variable and 
+  look for the splitting threshold which will maxismise the Information Gain. 
+  Or conversely, we could start with the discrete random variable with a large 
+  number of stages and look for neighbouring merges which minimise the Information Loss.
+  
+- If we impose the restriction that the continuous r.v. should be split into no 
+  more than $N$ categories and also, that the *target* r.v. (e.g. the accident 
+  involvment) must admit exactly $M$ stages (e.g. *low*, *medium* and *high* 
+  accident liability) the problem of finding the thresholds for splitting the 
+  continuous random variable into several groups may transform into an interesting 
+  question in Combinatorics (which I personally am quite keen about).
+
+
+### Discretizing the continuous variables - experiments
+
+### Merging of stages with the Hill Climbing algortihm
+
+In this section we try to directly use the Staged Trees and the Hill Climbing 
+algorithm implemented in the `stagedstrees` package to seek for the value of 
+thresholds between different age groups. To simplify the problem we will now 
+only consider three variables: `sex`, `age`, and `acc_inv` and look only at the 
+subset of respondents with frequency of driving at least once a week.
+
+We will start off with age being split into highly granular categories (Formulation 2).
+After fitting a staged tree we can compare which age categories land in the 
+same stages and on this basis transform the age groups into coarser partitions.
+
+The default Hill Climbing algorithm used by the package `stagedtrees` will 
+however not consider the constrain that we only want to allow for merging 
+*"adjacent"* categories of age. Nevertheless, it is interesting to see what the 
+results are.
+
+```{r}
+mod_disc_df <- df %>%
+  filter(freq %in% c(1,2,3)) %>%
+  mutate(age_group = cut_number(age, 20)) %>%
+  select(sex, age_group, acc_inv) %>%
+  na.omit()
+
+min(table(mod_disc_df))
+```
+
+```{r}
+tree <- mod_disc_df %>%
+  full( order = c("sex", "age_group", "acc_inv")) %>%
+  stages_bhc()
+
+plot(tree)
+plot(ceg(tree))
+```
+We can observe the pattern of stages grouping together for different ranges of 
+age. There are however a few nodes in the tree whose neighbours are in different stages, 
+which is not desired. We could modify the algorithm to only consider the merges 
+of the "adjacent" stages, but this approach already looks promising. 
+
+Now the remaining question is what to do if we would like to introduce a 
+new variable (like the frequency) into the model.
+
+### Decision Trees
+
+Here we try to use the decision trees from machine learning to help us decide on
+the thresholds for the continuous variables. Choosing the Gini Criterion as the
+measure for splitting the nodes and restricting the tree to contain at least 
+1000 observations in every child node we obtain the following decision tree: 
+
+```{r}
+mod_tree_df <- df %>%
+  filter(freq != 7) %>%
+  mutate(freq = factor(freq),
+         miles = miles * 2) %>%
+  select(sex, age, miles, acc_inv) %>%
+  na.omit()
+
+tree <- tree(acc_inv ~ miles + age, mod_tree_df, split = "gini", mincut = 1000)
+plot(tree)
+text(tree)
+```
+We now fit our staged tree model using the split values from the decision trees 
+to bin the continuous variables (miles and age)
+
+```{r}
+mod_miles_df2 <- mod_df %>%
+  filter(freq != 7) %>%
+  mutate(
+    miles = miles * 2,
+    mileage = case_when(
+      miles <= 4963 ~ 3,
+      miles > 4968 & miles <= 9367 ~ 2,
+      miles > 9367  ~ 1
+    ),
+    age_group = cut(age, breaks = c(16, 17.765, 18.435, 19.455, 27.915, 80)),
+    mileage = factor(mileage),
+    ) %>%
+  select(age_group, sex, mileage, acc_inv)
+
+mod2_miles <- mod_miles_df2 %>%
+  indep(join_unobserved = TRUE) %>%
+  stages_hc()
+
+plot(mod2_miles)
+barplot(mod2_miles, var = "acc_inv")
+```
+We now compare this model with our previous model involving miles. 
+
+```{r}
+par(mfrow = c(1,2))
+plot(mod1_miles)
+plot(mod2_miles)
+
+cbind(BIC(mod1_miles, mod2_miles), AIC = AIC(mod1_miles, mod2_miles)$AIC)
+```
+
+The new categories of age and miles result in a much lower BIC and AIC.
+
+However, in our previous model `mod1_miles` we considered 4 
+categories of age and 4 categories of mileage (in total 16 age-sex subgroups). 
+The new model comprises 5 categories of age and 3 categories of mileage (in total 15 age-sex subgroups). 
+We therefore  introduce an alternative third model `mod3_miles` with 5 categories of age and 3 
+categories of mileage where the age and mileage are split into categories of equal size.
+```{r}
+mod_miles_df3 <- mod_df %>%
+  filter(freq != 7) %>%
+  mutate(
+    miles = miles * 2,
+    mileage = cut_number(miles, 3),
+    age_group = cut_number(age, 5),
+    mileage = factor(mileage),
+    ) %>%
+  select(age_group, sex, mileage, acc_inv)
+
+mod3_miles <- mod_miles_df3 %>%
+  indep(join_unobserved = TRUE) %>%
+  stages_hc()
+
+plot(mod3_miles)
+
+cbind(BIC(mod1_miles, mod2_miles, mod3_miles), AIC = AIC(mod1_miles, mod2_miles, mod3_miles)$AIC)
+```
+Using the same number of age and sex groups as in `mod2_miles` but different 
+threshold values for the bins, so that the groups are equally sized, we obtain 
+the `mod2_miles` model which performs better than our first model but still not 
+as good as the `mod2_miles` model where the threshold values are derived from 
+the decision trees using the Gini Criterion.
+
+

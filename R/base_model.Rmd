@@ -1,0 +1,461 @@
+---
+title: "Modelling public road accidents"
+author: "Katarzyna Kobalczyk"
+date: "22/08/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(bnlearn)
+library(scales)
+library(stagedtrees)
+
+theme_set(theme_minimal())
+```
+
+# Base model
+
+## Data Preprocessing
+
+Variables included in the base regression model:
+- `sex`
+- `age` - age at which the respondent passed the practical driving test
+- `experience` -  number of years the respondent has been driving
+- `exposure` - defined as the annualised number of miles driven + 10 x the annualised number of days on which the driver has driven
+- `accident liability`- annualised accidents
+
+```{r}
+df <- read.table("data/deq1.tab", sep = "\t", header = TRUE)
+
+impute_missing <- function(x) {ifelse(x < 0, NA, x)}
+
+df <- df %>% 
+  select(sex, age = Age, miles = V00138, freq = V00160, acc1, nlacc1, 
+         style1 = ds1, style2 = ds2, style3 = ds3,
+         Hazardscore, violations, errors, aggressiveviolations,
+         inexperience, slips) %>%
+  apply(2, impute_missing) %>%
+  as.data.frame() %>%
+  mutate(sex = fct_recode(factor(sex), F = "1", M = "2"),
+         acc_inv = factor(case_when(
+           is.na(nlacc1)  ~ "NA", 
+           nlacc1 >= 1 ~ "1+",
+           TRUE ~ "0")),
+         miles = miles * 2,
+         freq_lab = fct_recode(factor(freq),
+                              "Everyday" = "1",
+                              "4-6 days per week" = "2",
+                              "1-3 days per week" = "3",
+                              "About a fortnight" = "4",
+                              "About once a month" = "5",
+                              "Less than once a month" = "6",
+                              "Never" = "7") # annualised milleage
+  )
+
+df
+```
+## EDA
+
+### Sex and age
+
+```{r}
+df %>% ggplot(aes(x = sex, fill = sex)) + 
+  geom_bar()
+
+df %>% ggplot(aes(x = age)) +
+  geom_histogram(binwidth = 5, fill = "white", colour = "black")
+
+df %>% ggplot(aes(x = sex, y = age, colour = sex)) +
+  geom_boxplot()
+```
+### Milleage - annualised and Frequency
+
+```{r}
+summary(df$miles)
+
+n_obs <- sum(!is.na(df$miles))
+  
+df %>% 
+  filter(!is.na(miles)) %>%
+  mutate(bins = cut(miles, breaks = c(-Inf, 1000, 5000, 10000, 15000, Inf))) %>%
+  group_by(bins) %>%
+  count() %>%
+  ggplot(aes(x = bins, y = n/n_obs * 100)) + 
+  geom_bar(stat = "identity") + 
+  ylab("% of respondents") + 
+  xlab("Annualised milleage")
+
+df %>% 
+  filter(!is.na(freq)) %>%
+  ggplot(aes(x = freq_lab)) + 
+  geom_bar() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+```{r}
+df %>%
+  filter(!is.na(miles) & !is.na(freq)) %>%
+  filter(!(abs(miles - median(miles) > 2*sd(miles)))) %>%
+  ggplot(aes(x = freq_lab, y = miles)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) + 
+  xlab("Frequency of driving in first 6 months") + 
+  ylab("Annualised milleage") + 
+  ggtitle("Milleage vs. frequency", subtitle = "(extreme values removed)") + 
+  scale_y_continuous(trans = "log1p")
+```
+
+
+### Predictors vs. accidents
+
+```{r}
+df %>%
+  filter(!is.na(acc_inv)) %>%
+  ggplot(aes(x = factor(acc_inv), y = age)) +
+  geom_boxplot() + 
+  scale_y_continuous(trans = "log") + 
+  xlab("Involved involvement") + 
+  ylab("Age")
+
+df %>%
+  filter(!is.na(acc_inv) & !is.na(miles)) %>%
+  ggplot(aes(x = factor(acc_inv), y = miles)) +
+  geom_boxplot() + 
+  scale_y_continuous(trans = "log1p") + 
+  xlab("Involved involvement") + 
+  ylab("Annualised milleage")
+
+table(df %>% select(freq_lab, acc_inv))
+
+df %>%
+  filter(!is.na(acc_inv) & !is.na(freq_lab)) %>%
+  group_by(freq_lab, acc_inv) %>%
+  count() %>%
+  ggplot(aes(x = freq_lab, y = n, fill = acc_inv)) +
+  geom_bar(stat = "identity", position = "fill") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+by_ages <- df %>% 
+  mutate(age_group = cut(df$age, 
+                         breaks = c(-Inf, 18, 20, 25, Inf))) %>%
+  select(age_group, acc_inv) %>%
+  table()
+
+by_ages / rowSums(by_ages)
+
+df %>% 
+  mutate(age_group = as.integer(age)) %>%
+  filter(!is.na(acc_inv)) %>%
+  ggplot(aes(x = age_group, group = acc_inv, fill = acc_inv)) +
+  geom_bar() + 
+  #scale_y_continuous(trans = "log1p") + 
+  xlab("age")
+
+df %>% 
+  mutate(age_group = as.integer(age)) %>%
+  filter(!is.na(acc_inv)) %>%
+  ggplot(aes(x = age_group, group = acc_inv, fill = acc_inv)) +
+  geom_bar(position = "fill") + 
+  xlab("age")
+```
+
+```{r}
+df %>%
+  filter(!is.na(ac_acc_inv)) %>%
+  mutate(age_group = cut(age, breaks = c(-Inf, 18, 20, 25, 30, 40, Inf))) %>%
+  group_by(age_group, sex, ac_acc_inv) %>%
+  count() %>%
+  ggplot(aes(x = age_group, y = n, fill = ac_acc_inv)) +
+  geom_bar(stat = "identity", position = "fill") + 
+  facet_wrap(~sex)
+
+table(df %>% select(ac_acc_inv, sex)) / rowSums(table(df %>% select(ac_acc_inv, sex)))
+```
+
+## Bayesian Network
+
+```{r}
+unique(cut_number(df$age, 4))
+
+df <- df %>% 
+  mutate(age_group = cut(age, breaks = c(16, 18, 20, 25, 80)))
+
+mod_df <- df %>%
+  select(age_group, sex, freq_lab, acc_inv) %>%
+  drop_na(freq_lab) %>%
+  mutate(acc_inv = if_else(freq_lab == "Never", "0", as.character(acc_inv)),
+         acc_inv = factor(acc_inv)) %>%
+  filter(acc_inv != "NA") %>%
+  mutate(acc_inv = droplevels(acc_inv, "NA"))
+  
+#table(mod_df)
+```
+
+```{r}
+bn <- bnlearn::hc(mod_df, score = "aic", blacklist = data.frame(from = c("acc_inv"), to = c("sex")))
+
+plot(bn)
+```
+
+```{r}
+bn_tree <- as_sevt(bn.fit(bn, data = mod_df), order  = c("age_group", "sex", "freq_lab", "acc_inv"))
+bn_tree <- sevt_fit(bn_tree, data = mod_df)
+plot(bn_tree) #,col = function(s) hue_pal()(length(s)))
+
+barplot(bn_tree, var = "acc_inv")#, col = hue_pal()(4))
+BIC(bn_tree)
+```
+```{r}
+# reduce the number of freq categories
+table(mod_df %>% select(freq_lab, acc_inv)) 
+table(mod_df %>% select(freq_lab, acc_inv)) / rowSums(table(mod_df %>% select(freq_lab, acc_inv)))
+
+mod_df2 <- df %>%
+  select(age_group, sex, freq, freq_lab, acc_inv) %>%
+  drop_na(freq_lab) %>%
+  mutate(acc_inv = if_else(freq_lab == "Never", "0", as.character(acc_inv)),
+         acc_inv = factor(acc_inv)) %>%
+  filter(acc_inv != "NA") %>%
+  mutate(acc_inv = droplevels(acc_inv, "NA")) %>%
+  mutate(freq2 = case_when(
+    freq == 1 ~ 1,
+    freq == 2 ~ 2,
+    freq == 3 ~ 3,
+    freq %in% c(4, 5) ~ 4,
+    freq %in% c(6, 7) ~ 5
+  ),
+  freq2 = factor(freq2)) %>%
+  select(age_group, freq2, sex, acc_inv) %>%
+  na.omit()
+
+table(mod_df2)
+
+bn2 <- bnlearn::hc(mod_df2, score = "aic" , blacklist = data.frame(from = c("acc_inv"), to = c("sex")))
+plot(bn2)
+```
+
+```{r}
+bn_tree2 <- as_sevt(bn.fit(bn2, data = mod_df2), order  = c("age_group", "sex", "freq2", "acc_inv"))
+bn_tree2 <- sevt_fit(bn_tree2, data = mod_df2)
+plot(bn_tree2)
+
+barplot(bn_tree2, var = "acc_inv")
+
+cbind(BIC(bn_tree2, bn_tree), AIC(bn_tree2, bn_tree))
+```
+
+```{r}
+order <- c("age_group", "sex", "freq2", "acc_inv")
+
+mod1 <- mod_df2 %>%
+  indep(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_hc()
+
+mod2 <- mod_df2 %>%
+  full(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_hc() 
+
+mod3 <- mod_df2 %>%
+  full(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_bj(distance = "kullback", thr = 0.035)
+
+cbind(BIC(bn_tree2, mod1, mod2, mod3), AIC = AIC(bn_tree2, mod1, mod2, mod3)$AIC)
+```
+
+```{r}
+order <- c("freq2", "age_group", "sex", "acc_inv")
+
+mod1a <- mod_df2 %>%
+  indep(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_hc()
+
+mod2a <- mod_df2 %>%
+  full(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_hc() 
+
+mod3a <- mod_df2 %>%
+  full(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_bj(distance = "kullback", thr = 0.035)
+
+cbind(BIC(mod1a, mod2a, mod3a), AIC = AIC(mod1a, mod2a, mod3a)$AIC)
+```
+
+
+```{r}
+# Best BIC model the same as best 
+best_mod <- search_best(mod_df2, join_unobserved = FALSE, alg = stages_hc)
+plot_mod(best_mod)  
+```
+
+
+```{r}
+plot_mod <- function(mod) {
+  plot(mod)
+  barplot(mod, var = "acc_inv")
+  plot(ceg(mod))
+}
+```
+
+
+
+```{r}
+plot(mod1)
+barplot(mod1, var = "acc_inv")
+plot(ceg(mod1))
+```
+
+```{r}
+plot(mod1a)
+barplot(mod1a, var = "acc_inv")
+plot(ceg(mod1a))
+```
+### Combining sex and age
+
+```{r}
+mod_df3 <- mod_df2 %>%
+  mutate(age_sex = factor(paste0(age_group, "-",sex)))
+
+new_bn <- bnlearn::hc(mod_df3 %>% select(age_sex, freq2, acc_inv), score = "aic")
+plot(new_bn)
+```
+```{r}
+order <- c("age_sex", "freq2", "acc_inv")
+
+mod_new <- mod_df3 %>%
+  indep(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_hc()
+```
+
+```{r}
+plot(mod_new)
+barplot(mod_new, var = "acc_inv")
+plot(ceg(mod_new))
+```
+
+# Missingness of the response
+
+```{r}
+mod_mis_df <- df %>%
+  select(age_group, sex, freq, freq_lab, acc_inv) %>%
+  drop_na(freq_lab) %>%
+  mutate(acc_inv = if_else(freq_lab == "Never", "0", as.character(acc_inv)),
+         acc_inv = factor(acc_inv),
+         is_missing = factor(if_else(acc_inv == "NA", "yes", "no"))) %>%
+  mutate(freq2 = case_when(
+    freq == 1 ~ 1,
+    freq == 2 ~ 2,
+    freq == 3 ~ 3,
+    freq %in% c(4, 5) ~ 4,
+    freq %in% c(6, 7) ~ 5
+  ),
+  freq2 = factor(freq2)) %>%
+  select(age_group, sex, freq2, is_missing)
+
+order <- c("age_group", "sex", "freq2", "is_missing")
+
+bn_mis <- bnlearn::hc(mod_mis_df, score = "bic")
+plot(bn_mis)
+```
+
+## Hazard Perception
+
+```{r}
+df_full <- read.table("data/unified_database_2014.tab", sep = "\t", header = TRUE)
+
+df_full <- df_full %>% 
+  select(ID, sex = Sex_all, cohort = Cohort_all, age = Age_all, miles = t1_a2, 
+         freq = t1_a1, nlacc1 = t1_nlacc_orig, hp =  t0_takeHP) %>%
+  apply(2, impute_missing) %>%
+  as.data.frame() %>%
+  mutate(sex = fct_recode(factor(sex), F = "0", M = "1"),
+         acc_inv = factor(case_when(
+           is.na(nlacc1)  ~ "NA", 
+           nlacc1 >= 1 ~ "1+",
+           TRUE ~ "0")),
+         miles = miles * 2,
+         hp = factor(hp))
+
+df_full
+```
+```{r}
+table(df_full[,c("cohort", "hp")])
+```
+
+
+```{r}
+mod_hp_df <- df_full %>%
+  mutate(age_group = cut(age, breaks = c(16, 18, 20, 25, 80)),
+         age_sex = paste0(age_group, "-", sex)) %>%
+  drop_na(freq) %>%
+  mutate(acc_inv = if_else(freq == "7", "0", as.character(acc_inv)),
+         acc_inv = factor(acc_inv)) %>%
+  filter(acc_inv != "NA") %>%
+  mutate(acc_inv = droplevels(acc_inv, "NA")) %>%
+  mutate(freq2 = case_when(
+    freq == 1 ~ 1,
+    freq == 2 ~ 2,
+    freq == 3 ~ 3,
+    freq %in% c(4, 5) ~ 4,
+    freq %in% c(6, 7) ~ 5
+  ),
+  freq2 = factor(freq2)) %>%
+  select(hp, age_group, age_sex, freq2, sex, acc_inv) %>%
+  na.omit()
+
+mod_hp_df
+```
+```{r}
+order <- c("freq2", "hp", "acc_inv")
+
+mod1_hp <- mod_hp_df %>%
+  indep(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_hc()
+
+plot(mod1_hp)
+barplot(mod1_hp, var = "acc_inv")
+plot(ceg(mod1_hp))
+```
+
+
+```{r}
+order <- c("freq2", "sex", "hp",  "acc_inv")
+
+mod1_hp <- mod_hp_df %>%
+  indep(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_hc()
+
+plot(mod1_hp)
+barplot(mod1_hp, var = "acc_inv")
+plot(ceg(mod1_hp))
+```
+```{r}
+order <- c("freq2", "age_group", "hp",  "acc_inv")
+
+mod1_hp <- mod_hp_df %>%
+  indep(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_hc()
+
+plot(mod1_hp)
+barplot(mod1_hp, var = "acc_inv")
+plot(ceg(mod1_hp))
+```
+```{r}
+order <- c("age_sex", "hp", "acc_inv")
+
+mod1_hp <- mod_hp_df %>%
+  indep(order = order, join_unobserved = FALSE, lambda = 0.5) %>%
+  stages_hc()
+
+plot(mod1_hp)
+barplot(mod1_hp, var = "acc_inv")
+plot(ceg(mod1_hp))
+```
+```{r}
+df_full %>%
+  drop_na(nlacc1) %>%
+  group_by(cohort) %>%
+  summarise(acc_pp = sum(nlacc1)/n())
+```
+

@@ -1,0 +1,326 @@
+---
+title: "Discretization of continuous variables"
+output: html_notebook
+---
+
+```{r}
+df <- read.table("data/deq1.tab", sep = "\t", header = TRUE)
+
+impute_missing <- function(x) {ifelse(x < 0, NA, x)}
+
+df <- df %>% 
+  select(sex, age = Age, miles = V00138, freq = V00160, acc1, nlacc1, 
+         style1 = ds1, style2 = ds2, style3 = ds3,
+         Hazardscore, violations, errors, aggressiveviolations,
+         inexperience, slips) %>%
+  apply(2, impute_missing) %>%
+  as.data.frame() %>%
+  mutate(sex = fct_recode(factor(sex), F = "1", M = "2"),
+         acc_inv = factor(case_when(
+           is.na(nlacc1)  ~ "NA", 
+           nlacc1 >= 1 ~ "1+",
+           TRUE ~ "0")),
+         miles = miles * 2, # annualised mileage
+         freq_lab = fct_recode(factor(freq),
+                              "Everyday" = "1",
+                              "4-6 days per week" = "2",
+                              "1-3 days per week" = "3",
+                              "About a fortnight" = "4",
+                              "About once a month" = "5",
+                              "Less than once a month" = "6",
+                              "Never" = "7") 
+  )
+
+df
+```
+
+```{r}
+data <- df %>%
+  filter(freq_lab != "Never") %>%
+  select(age, miles, acc_inv) %>%
+  filter(acc_inv != "NA") %>%
+  mutate(acc_inv = factor(acc_inv)) %>%
+  na.omit()
+
+mdlp_disc <- mdlp(data)
+mdlp_disc$cutp
+```
+
+```{r}
+mdlp_disc_df <- mdlp_disc$Disc.data %>%
+  mutate(age = factor(if_else(age == 1, "young", "mature")),
+         miles = factor(if_else(miles == 1, "low", "high")),
+         acc_inv = factor(acc_inv))
+
+mdlp_disc_df %>%
+  group_by(miles, acc_inv) %>%
+  count() %>%
+  ggplot(aes(x = miles, y = n, fill = acc_inv)) +
+  geom_bar(stat = "identity")
+
+mdlp_disc_df %>%
+  group_by(age, acc_inv) %>%
+  count() %>%
+  ggplot(aes(x = age, y = n, fill = acc_inv)) +
+  geom_bar(stat = "identity")
+
+round(table(mdlp_disc_df[,c("age", "acc_inv")]) / rowSums(table(mdlp_disc_df[,c("age", "acc_inv")])) * 100, 2)
+round(table(mdlp_disc_df[,c("miles", "acc_inv")]) / rowSums(table(mdlp_disc_df[,c("miles", "acc_inv")])) * 100, 2)
+```
+
+
+```{r, warning=FLASE}
+df %>%
+  ggplot(aes(x = acc_inv, y = log1p(miles))) + 
+  geom_boxplot(outlier.colour = "white" ) + 
+  geom_jitter(shape = 1, alpha = 0.2, width = 0.1, height = 0)
+
+df %>%
+  ggplot(aes(x = acc_inv, y = age)) +
+  geom_boxplot(outlier.colour = "white" ) + 
+  geom_jitter(shape = 1, alpha = 0.2, width = 0.1, height = 0)
+```
+```{r}
+tree <- tree(acc_inv ~ age, data, method = "gini")
+plot(tree)
+text(tree)
+
+tree <- tree(acc_inv ~ miles + age, data, method = "gini")
+plot(tree)
+text(tree)
+```
+
+
+
+
+## Staged Trees and CEGs
+
+```{r}
+mod_df <- df %>%
+  filter(acc_inv != "NA") %>%
+  filter(freq_lab != "Never") %>%
+  mutate(age_group = factor(if_else(age < 18.43, "young", "mature")),
+         mileage = factor(if_else(miles < 4963, "low", "high")),
+         freq2 = case_when(
+                  freq == 1 ~ 1,
+                  freq == 2 ~ 2,
+                  freq == 3 ~ 3,
+                  freq %in% c(4, 5) ~ 4,
+                  freq %in% c(6, 7) ~ 5),
+         freq2 = factor(freq2),
+         acc_inv = factor(acc_inv),
+         age_sex = factor(paste0(age_group, "-", sex))) %>%
+  select(age_group, sex, age_sex, mileage, freq2, acc_inv) %>%
+  na.omit()
+```
+
+```{r}
+order <- c("age_group", "sex", "mileage", "acc_inv")
+
+bn_miles <- bnlearn::hc(mod_df[,order])
+plot(bn_miles)
+
+bn_miles_tree <- as_sevt(bn.fit(bn_miles, data = mod_df[,order]), order  = order)
+bn_miles_tree <- sevt_fit(bn_miles_tree, data = mod_df[,order], lambda = 0)
+
+plot(bn_miles_tree)
+barplot(bn_miles_tree, var = "acc_inv")
+```
+
+```{r}
+mod1_miles <- mod_df %>%
+  indep(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_hc()
+
+plot(mod1_miles)
+barplot(mod1_miles, var = "acc_inv")
+plot(ceg(mod1_miles))
+```
+
+```{r}
+mod2_miles <- mod_df %>%
+  full(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_hc()
+
+plot(mod2_miles)
+barplot(mod2_miles, var = "acc_inv")
+plot(ceg(mod2_miles))
+```
+
+
+```{r}
+order <- c("age_group", "sex", "freq2", "acc_inv")
+
+bn_freq <- bnlearn::hc(mod_df[,order], score = "aic")
+plot(bn_freq)
+
+bn_freq_tree <- as_sevt(bn.fit(bn_freq, data = mod_df[,order]), order  = order)
+bn_freq_tree <- sevt_fit(bn_freq_tree, data = mod_df[,order], lambda = 0)
+
+plot(bn_freq_tree)
+barplot(bn_freq_tree, var = "acc_inv")
+```
+
+```{r}
+mod1_freq <- mod_df %>%
+  indep(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_hc()
+
+plot(mod1_freq)
+barplot(mod1_freq, var = "acc_inv")
+plot(ceg(mod1_freq))
+```
+```{r}
+mod2_freq <- mod_df %>%
+  full(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_hc()
+
+plot(mod2_freq)
+barplot(mod2_freq, var = "acc_inv")
+plot(ceg(mod2_freq))
+```
+
+```{r}
+cbind(BIC(mod1_freq, mod2_freq, mod1_miles, mod2_miles), 
+      AIC(mod1_freq, mod2_freq, mod1_miles, mod2_miles))
+```
+
+
+### Age and sex combined
+
+```{r}
+order <- c("age_sex", "mileage", "acc_inv")
+
+mod_miles <- mod_df %>%
+  full(order = order, join_unobserved = FALSE, lambda = 0) %>%
+  stages_hc()
+
+# mod_summary <- summary(mod_miles)
+# final_stages <- mod_summary$stages.info[["acc_inv"]]
+# new_stages <- as.character(order(final_stages[["0"]]))
+# old_stages <- final_stages$stage
+# 
+# for (i in seq(1, length(old_stages)))  {
+#   mod_miles <- rename_stage(mod_miles, "acc_inv", old_stages[i], new_stages[i])
+# }
+
+summary(mod_miles)
+plot(mod_miles)
+barplot(mod_miles, var = "acc_inv")
+plot(ceg(mod_miles))
+```
+
+## No miles driven
+
+```{r}
+mod_df <- df %>%
+  filter(freq_lab != "Never") %>%
+  filter(is.na(miles) | miles > 0) %>%
+  mutate(age_group = factor(if_else(age < 18.43, "young", "mature")),
+         miles = if_else(freq_lab == "Never", 0, miles),
+         mileage = case_when(
+           is.na(miles) ~ "NA",
+           miles == 0 ~ "0",
+           miles < 4963 ~ "low",
+           TRUE ~ "high"
+         ),
+         mileage = factor(mileage),
+         acc_inv = case_when(
+           freq_lab == "Never" | nlacc1 == 0 ~ "0",
+           nlacc1 > 0 ~ "+1",
+           TRUE ~ "NA"
+         ),
+         acc_inv = factor(acc_inv),
+         missing_miles = factor(if_else(is.na(miles), "yes", "no")),
+         age_sex = factor(paste0(age_group, "-", sex))) %>%
+  select(age_group, sex, age_sex, miles, missing_miles, mileage, acc_inv) %>%
+  filter(acc_inv != "NA") %>%
+  mutate(acc_inv = droplevels(acc_inv, "NA"))
+
+mod_df
+```
+```{r}
+bn <- bnlearn::hc(mod_df %>% select(age_sex, missing_miles, mileage, acc_inv), score = "aic")
+plot(bn)
+```
+
+```{r}
+order <- c("age_sex", "missing_miles", "mileage", "acc_inv")
+
+mod_mis_miles <- mod_df %>%
+  indep(order = order, join_unobserved = TRUE, name_unobserved = "NA") %>%
+  stages_hc()
+
+summary(mod_mis_miles)
+plot(mod_mis_miles)
+barplot(mod_mis_miles, var = "acc_inv")
+plot(ceg(mod_mis_miles))
+```
+
+# Using Staged Trees to discretize the variables
+
+```{r}
+data <- df %>%
+  filter(freq %in% c(1,2,3)) %>%
+  filter(acc_inv != "NA") %>%
+  group_by(sex) %>%
+  mutate(age_bin = cut_number(age,15),
+         age_bin_n = as.numeric(cut_number(age,15))) %>%
+  mutate(
+    age_bin = factor(age_bin),
+    age_bin_n = factor(age_bin_n),
+    acc_inv = factor(acc_inv))
+```
+
+
+```{r}
+order <- c("sex", "age_bin_n", "acc_inv")
+
+tree2 <- data %>%
+  indep(order = order) %>%
+  stages_hc()
+
+plot(tree2)
+barplot(tree2, "acc_inv")
+```
+```{r}
+summary(tree2)
+```
+
+```{r}
+paths <- get_path(tree2, "acc_inv", "5") 
+
+ranges <- data %>%
+  select(sex, age_bin_n, age_bin) %>%
+  unique()
+
+paths %>%
+  left_join(ranges)
+```
+## CEGs with new age groups
+
+```{r}
+data <- df %>%
+  filter(freq %in% c(1,2,3)) %>%
+  filter(acc_inv != "NA") %>%
+  mutate(age_group = cut(age, breaks = c(16, 18, 20, 25, 29, 80), right = FALSE),
+         acc_inv = factor(acc_inv),
+         age_group = factor(age_group),
+         mileage = factor(if_else(miles < 4963, "low", "high")),
+         age_sex = paste0(age_group, "-", sex),
+         freq = factor(freq)) %>%
+  select(sex, age_group, age_sex, freq, acc_inv) %>%
+  drop_na()
+```
+
+```{r}
+order <- c("age_group", "sex", "freq", "acc_inv")
+
+tree <- data %>%
+  indep(order = order) %>%
+  stages_hc()
+
+plot(tree)
+barplot(tree, "acc_inv")
+```
+

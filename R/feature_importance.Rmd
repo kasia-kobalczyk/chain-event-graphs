@@ -1,0 +1,76 @@
+---
+title: "Feature importance"
+output: html_notebook
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(bnlearn)
+library(stagedtrees)
+library(tree)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(discretization)
+
+theme_set(theme_minimal())
+```
+
+## Look for influencial features
+
+```{r}
+df <- read.table("data/deq1.tab", sep = "\t", header = TRUE)
+
+impute_missing <- function(x) {ifelse(x < 0, NA, x)}
+
+d_questions <- list( 
+  D1 = c(178, 180, 177, 179, 145),
+  D2 = c(185),
+  D3 = c(316),
+  D4 = seq(245, 264),
+  D5 = c(237),
+  D6 = seq(188, 197),
+  D7 = seq(198, 206),
+  D8 = seq(207, 215),
+  D9 = seq(216, 225),
+  D10 = seq(238, 244),
+  D11 = c(150, 154, 155, 161, 174, 186, 288, 298, 302, 303, 304, 309)
+)
+
+sections <- c("D1", "D2", "D3", "D4", "D5", "D11")
+
+d_subset <- c()
+for (sec in sections) {
+  d_subset <- c(d_subset, d_questions[[sec]])
+}
+
+data <- df[,c("Age", "sex",
+              paste0("V00", as.character(d_subset)), 
+              "ds1", "ds2", "ds3", "Hazardscore", "violations", "errors",
+              "aggressiveviolations", "slips", "accinv1")] %>%
+  apply(2, impute_missing)
+
+data <- data[, names(which(colSums(is.na(data)) < 500))] %>% 
+  na.omit() %>%
+  as.data.frame() %>%
+  mutate(accinv1 = factor(accinv1))
+```
+
+```{r}
+x <- as.matrix(data %>% select(-accinv1))
+y <- as.double(data$accinv1)
+
+# Fit the LASSO model (Lasso: Alpha = 1)
+set.seed(100)
+cv.lasso <- cv.glmnet(x, y, family='binomial', alpha=1, parallel=TRUE, standardize=TRUE, type.measure='auc')
+
+# Results
+plot(cv.lasso)
+
+df_coef <- round(as.matrix(coef(cv.lasso, s=cv.lasso$lambda.min)), 2)
+
+# See all contributing variables
+sort(abs(df_coef[df_coef[, 1] != 0, ]))
+```

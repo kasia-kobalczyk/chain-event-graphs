@@ -1,0 +1,94 @@
+---
+title: "Missing values, revisited"
+author: "Katarzyna Kobalczyk"
+date: "09/09/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+#knitr::opts_chunk$set(echo = TRUE, fig.width = 12, fig.height = 8)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(bnlearn)
+library(scales)
+library(stagedtrees)
+library(tree)
+library(gridExtra)
+
+theme_set(theme_minimal())
+```
+
+```{r}
+df <- read.csv("../data/processed/new_missing_values.csv") %>%
+  column_to_rownames("X")
+
+head(df)
+waves <- paste0("wave", seq(1,4))
+```
+
+
+
+```{r}
+temp_df <- df %>%
+  filter(sent == 1) %>%
+  filter(!is.na(sex)) %>%
+  gather("wave", "responded", -(c("sex", "cohort", "sent"))) 
+
+#pos <- "fill"
+pos <- "stack"
+
+# Number of non missing responses by waves
+temp_df %>%
+  filter(cohort < 9) %>%
+  filter(responded == 1) %>%
+  ggplot(aes(x = wave, fill = sex)) + 
+  geom_bar(pos = pos) +
+  ggtitle("Number of respondents per each wave of the survey", 
+          subtitle = "Cohorts 1 - 8")
+
+temp_df %>%
+  filter(cohort <= 12) %>%
+  filter(wave != "wave4") %>%
+  filter(responded == 1) %>%
+  ggplot(aes(x = wave, fill = sex)) + 
+  geom_bar(pos = pos) +
+  ggtitle("Number of respondents per each wave of the survey", 
+          subtitle = "Cohorts 1 - 12")
+
+temp_df %>%
+  filter(wave %in% c("wave1", "wave2")) %>%
+  filter(responded == 1) %>%
+  ggplot(aes(x = wave, fill = sex)) + 
+  geom_bar(pos = pos) +
+  ggtitle("Number of respondents per each wave of the survey", 
+          subtitle = "All cohorts")
+```
+## Full data set model
+
+```{r}
+order <- (c("sex", waves))
+
+mod_df <- df %>%
+  filter(sent == 1) %>%
+  filter(cohort < 9) %>%
+  select(order) %>%
+  na.omit() 
+
+mod_df[,order] <- lapply(mod_df[,order], factor)
+
+bn <- bnlearn::hc(mod_df, score = "bic")
+plot(bn)
+```
+
+```{r}
+mod1 <- stages_bhc(full(mod_df)) 
+plot(mod1)
+
+mod2 <- stages_hc(indep(mod_df)) 
+plot(mod2)
+plot(ceg(mod2))
+```
+
+
+

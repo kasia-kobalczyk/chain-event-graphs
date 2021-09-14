@@ -1,0 +1,187 @@
+---
+title: "CEG - experiments"
+author: "Katarzyna Kobalczyk"
+date: "19/08/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(stagedtrees)
+library(scales)
+library(bnlearn)
+```
+
+# Usage of the stagedtrees package
+
+## Learning the stage structure for a dataset
+
+```{r}
+data(Titanic)
+str(Titanic)
+```
+
+```{r}
+m_full <- full(Titanic)
+m_indep <- indep(Titanic)
+m_full
+m_indep
+plot(m_full, col = function(s) hue_pal()(length(s)))  # option to use different colour palettes
+plot(m_indep)
+```
+
+```{r}
+mod1 <- stages_hc(m_indep)
+mod2 <- stages_bj(m_full, thr = 0.1)
+
+plot(mod1)
+plot(mod2)
+```
+
+```{r}
+# models can be refined
+
+mod3 <- stages_hc(mod2)
+
+plot(mod3)
+```
+```{r}
+# comparison of the models
+
+compare_stages(mod1, mod3, plot = TRUE)
+
+cbind(AIC(mod1, mod2, mod3), BIC = BIC(mod1, mod2, mod3)$BIC)
+```
+
+````{r}
+plot(mod1)
+barplot(mod1, "Survived", horiz = TRUE)
+```
+## Bayesian networks as staged tress
+
+```{r}
+titanic.df <- as.data.frame(Titanic)
+titanic.df <- titanic.df[rep(row.names(titanic.df), titanic.df$Freq), 1:4]
+
+mod_bn <- bnlearn::hc(titanic.df)
+plot(mod_bn)
+
+values = list()
+for (c in colnames(titanic.df)) {
+  values[[c]] <- unique(titanic.df[,c])
+}
+bn_tree <- sevt_fit(bn_tree, data = titanic.df, lambda = 0.5)
+plot(bn_tree)
+```
+
+```{r}
+mod4 <- stages_hc(bn_tree, score = function(x) -AIC(x, k = 100))
+plot(mod4)
+plot(ceg(mod4))
+```
+```{r}
+subtree_crew <- subtree(mod4, c(Class = "Crew"))
+subtree_crew
+plot(subtree_crew, cex_label_nodes = 1.5, pch = 1)
+summary(subtree_crew)
+```
+```{r}
+get_path(mod4, var = "Survived", stage = "5")
+```
+
+```{r}
+prob(mod4, c(Survived = "Yes"))
+prob(mod4, c(Survived = "Yes", Age = "Adult")) / prob(mod4, c(Age = "Adult"))
+prob(mod4, c(Survived = "Yes", Age = "Child")) / prob(mod4, c(Age = "Child"))
+```
+
+# A dataset analysis using stagedtrees
+
+```{r}
+library(magrittr)
+data("PhDArticles")
+str(PhDArticles)
+```
+
+```{r}
+bn <- bnlearn::hc(PhDArticles)
+plot(bn)
+
+bn_tree <- as_sevt(bn.fit(bn, data = as.data.frame(PhDArticles)), order  = c("Gender", "Kids", "Married", "Articles"))
+plot(bn_tree)
+```
+- Number of Articles of a student is independent of the Gender, Kids and Married
+- Given the number of publications of the mentor the number of publications of a student is conditionally independent of the prestige of the university.
+
+We investigate the strength of independence between the Articles and Gender.
+
+```{r}
+order <- c("Gender", "Kids", "Married", "Articles")
+
+
+mod1 <- PhDArticles %>%
+  select(all_of(order)) %>%
+  indep(order = order) %>%
+  stages_hc() %>%
+  join_unobserved(name = "NA")
+
+mod2 <- PhDArticles %>%
+  select(all_of(order)) %>%
+  full(order = order) %>%
+  stages_hc() %>%
+  join_unobserved(name = "NA")
+
+plot(mod1)
+plot(mod2)
+```
+
+```{r}
+compare_stages(mod1, mod2, plot = TRUE)
+```
+
+```{r}
+par(mfrow = c(1,2))
+plot(mod2)
+barplot(mod2, var = "Articles", legend.text = TRUE)
+```
+Not married women without kids and married women with kids have the lowest proabability of hugh number of articles.
+The population with highest probability of high number of articles are males with no kids.
+
+```{r}
+get_path(mod2, var = "Articles", "4")
+```
+
+We can test if mod1 is sufficient to describe the data against the more complex model mod2 using the LRT.
+```{r}
+lr_test(mod1, mod2)
+```
+
+The small p-value confirms that the asymetric structure described by mod2 is indeed supported by the data.
+
+Finally a staged tree over all the variables is built.
+```{r}
+mod_all <- PhDArticles %>%
+  full(order = c("Prestige", "Mentor", order)) %>%
+  join_unobserved() %>%
+  stages_bj(thr = 0.5) %>%
+  stndnaming()
+
+par(mfrow = c(1,2))
+plot(mod_all, cex_label_edges = 0.9)
+barplot(mod_all, var = "Articles", legend.text = TRUE)
+```
+
+Stage with highest probability of a large number of articles - stage 3 includes the following paths:
+
+```{r}
+get_path(mod_all, "Articles", "3")
+```
+This population only includes students whose mentors have high number of articles. Among them are males from high prestige universities with no kids,
+married males and females from low prestige universities and married females with no kids and high prestige universities.
+
+```{r}
+plot(ceg(mod_all))
+```
+
