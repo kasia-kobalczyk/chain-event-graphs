@@ -1,0 +1,18 @@
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+.Rproj.user/
+
+# include only .gitkeep files in data/
+/data/**/*.*
+!/data/**/*.gitkeep
+
+
+papers
+
+R/*
+!/R/*.gitkeep
+
+python/*
+!/python/*.gitkeep
