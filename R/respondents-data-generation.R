@@ -54,5 +54,3 @@ print(xtable(missing_sex_df[,c("F", "F_pct", "M", "M_pct")], type = "latex", dig
 
 # Save to csv
 write.csv(missing_df, file = "../data/processed/new_missing_values.csv")
-
-
