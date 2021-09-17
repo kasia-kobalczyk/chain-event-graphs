@@ -12,8 +12,7 @@
 papers
 
 
-python/*
-!/python/*.gitkeep
+python/figures/*
 
 # exclude MATLAB scripts
 *.m
