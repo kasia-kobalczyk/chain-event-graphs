@@ -9,10 +9,10 @@ class converter(object):
 
     def export_to_tex(self):
         mod_str = self.figure.to_string()
-        f = open("figures/%s.dot" %self.filename, "w+")
+        f = open("../figures/%s.dot" %self.filename, "w+")
         f.write(mod_str)
         f.close()
-        cmd = "dot2tex -tmath --figonly figures/%s.dot > figures/%s.tex" % (self.filename, self.filename)
+        cmd = "dot2tex -tmath --figonly ../figures/%s.dot > ../figures/%s.tex" % (self.filename, self.filename)
         os.system(cmd)
     
     def __construct_labels(self):
@@ -24,12 +24,12 @@ class converter(object):
         return lines
     
     def postprocess_tex(self):
-        f = open("figures/" + self.filename + ".tex")
+        f = open("../figures/" + self.filename + ".tex")
         lines = f.readlines()
         f.close()
         layer = 0
 
-        f = open("figures/" + self.filename + ".tex", "w+")
+        f = open("../figures/" + self.filename + ".tex", "w+")
         for l in lines:
             if "\\begin{tikz" in l:
                 l = "\\begin{tikzpicture}[>=latex,line join=bevel, scale = 0.2]\n"
