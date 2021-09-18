@@ -266,6 +266,8 @@ mod_freq_df <- mod_df %>%
   mutate(freq = if_else(freq %in% c(1,2,3), as.character(freq), "4"),
          freq = factor(freq)) %>%
   select(age_group, sex, freq, acc_inv)
+
+write.csv(mod_freq_df, "../data/processed/freq_mod.")
 ```
 
 We begin by fitting a Bayesian Network on the 4 variables of interest

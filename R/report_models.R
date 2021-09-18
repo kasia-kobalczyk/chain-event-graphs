@@ -25,6 +25,7 @@ df <- df_full %>%
            nlacc1 >= 1 ~ "1+",
            TRUE ~ "0")),
          miles = if_else(freq == "7", 0, miles),
+         miles = miles * 2,
          freq_lab = fct_recode(factor(freq),
                                "Everyday" = "1",
                                "4-6 days per week" = "2",
@@ -33,15 +34,41 @@ df <- df_full %>%
                                "About once a month" = "5",
                                "Less than once a month" = "6",
                                "Never" = "7"))
-  
+
+# Frequency model ---------------------------------------------------------
+
 unique(cut_number(df$age, 3))
 
 mod_freq_df <- df %>%
   mutate(age_group = cut(age, c(16, 18, 21, 80))) %>%
   drop_na(sex, age, freq, acc_inv) %>%
-  mutate(freq = if_else(freq %in% c(3,4), as.character(freq), "3"),
-         freq = factor(freq)) %>%
+  mutate(freq = if_else(freq %in% c("3","4"), "3", as.character(freq)),
+         freq = factor(freq),
+         hp = factor(hp)) %>%
   filter(freq %in% c("1","2","3")) %>%
-  select(age_group, sex, freq, acc_inv)
+  select(age_group, sex, freq, acc_inv, hp)
 
 write.csv(mod_freq_df, "../data/processed/freq_mod.csv")
+
+# Mileage model ---------------------------------------------------------
+
+unique(cut_number(df$miles * 2, 3))
+
+mod_miles_df <- df %>%
+  filter(freq != 7) %>%
+  mutate(age_group = cut(age, c(16, 18, 21, 80))) %>%
+  drop_na(sex, age) %>%
+  mutate(freq = if_else(freq %in% c("3","4"), "3", as.character(freq)),
+         freq = factor(freq),
+         hp = factor(hp),
+         miles = case_when(
+           miles > 12000 ~ "1",
+           miles <= 12000 & miles > 4000 ~ "2",
+           miles <= 4000 ~ "3",
+           TRUE ~ NA_character_
+         )) %>%
+  filter(freq %in% c("1","2","3")) %>%
+  select(age_group, sex, miles, acc_inv)
+
+write.csv(mod_freq_df, "../data/processed/miles_mod.csv")
+
