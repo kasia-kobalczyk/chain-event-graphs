@@ -4,6 +4,7 @@
 .Ruserdata
 .Rproj.user/
 
+
 # include only .gitkeep files in data/
 /data/**/*.*
 !/data/**/*.gitkeep
@@ -11,7 +12,7 @@
 
 papers
 
-
+python/__pycache__
 python/figures/*
 
 # exclude MATLAB scripts
