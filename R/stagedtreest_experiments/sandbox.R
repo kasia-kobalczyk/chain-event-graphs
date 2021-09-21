@@ -21,41 +21,58 @@ frequency <- c(1,2)
 
 # Greedy all
 full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("age_group", "acc_inv"))
-mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = 20, variable = "acc_inv")
+mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = 20, variable = "acc_inv", per_subset = TRUE)
 plot(mod_greedy_all)
 title("Males and females - greedy")
 
-# Exhaustive all
+# full all
 full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("age_group", "acc_inv"))
-mod_exhaustive_all <- exhaustive_ordered_search(full_mod, n_bins = 4, variable = "acc_inv")
-plot(mod_exhaustive_all)
+mod_full_all <- full_ordered_search(full_mod, n_init = N_INIT, n_bins = 4, variable = "acc_inv")
+plot(mod_full_all)
 title("Males and females - full search")
 
 # Greedy - males and females split
 full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("sex", "age_group", "acc_inv"))
-mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv")
+mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv", per_subset = FALSE)
 plot(mod_greedy_all)
 title("Males and females - greedy search")
 
-# Exhaustive - females
-full_mod <- full(mod_df %>% filter(freq %in% frequency & sex == "F") %>% select("age_group", "acc_inv"))
-mod_exhaustive_f <- exhaustive_ordered_search(full_mod, n_bins = 3, variable = "acc_inv")
+# Greedy - males and females split
+full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("sex", "age_group", "acc_inv"))
+mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv", per_subset = TRUE)
+plot(mod_greedy_all)
+title("Males and females - greedy search")
 
-# Exhaustive - males
+# full - males and females
+full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("sex", "age_group", "acc_inv"))
+mod_full_all <- full_ordered_search(full_mod, n_init = N_INIT, n_bins = 4, variable = "acc_inv", per_subset = FALSE)
+plot(mod_full_all)
+title("Males and females - full search")
+
+# full - males and females
+full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("sex", "age_group", "acc_inv"))
+mod_full_all <- full_ordered_search(full_mod, n_init = N_INIT, n_bins = 4, variable = "acc_inv", per_subset = TRUE)
+plot(mod_full_all)
+title("Males and females - full search")
+
+# full - females
+full_mod <- full(mod_df %>% filter(freq %in% frequency & sex == "F") %>% select("age_group", "acc_inv"))
+mod_full_f <- full_ordered_search(full_mod, n_init = N_INIT, n_bins = 4, variable = "acc_inv")
+
+# full - males
 full_mod <- full(mod_df %>% filter(freq %in% frequency & sex == "M") %>% select("age_group", "acc_inv"))
-mod_exhaustive_m <- exhaustive_ordered_search(full_mod, n_bins = 3, variable = "acc_inv")
+mod_full_m <- full_ordered_search(full_mod, n_init = N_INIT, n_bins = 4, variable = "acc_inv")
 
 par(mfrow = c(1,2))
-plot(mod_exhaustive_m)
+plot(mod_full_m)
 title("males")
-plot(mod_exhaustive_f)
+plot(mod_full_f)
 title("females")
 par(mfrow = c(1,1))
 
 
 
 # ------------------------------------------ Integer initial values
-
 mod_df <- df %>%
   filter(freq != 7) %>%
   mutate(int_age = floor(age),
@@ -67,43 +84,55 @@ order <- c("sex", "int_age", "acc_inv")
 
 frequency <- c(1,2)
 
+N_INIT <- 53
 # Greedy all
 full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("int_age", "acc_inv"))
-mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = 53, variable = "acc_inv")
+mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv")
 plot(mod_greedy_all)
 title("Males and females - greedy")
 
-# Exhaustive all
+# full all
 full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("int_age", "acc_inv"))
-mod_exhaustive_all <- exhaustive_ordered_serach(full_mod, n_bins = 3, variable = "acc_inv")
-plot(mod_exhaustive_all)
+mod_full_all <- full_ordered_search(full_mod, n_init = N_INIT, variable = "acc_inv")
+plot(mod_full_all)
 title("Males and females - full search")
 
-# Exhaustive - females
+# full - females
 full_mod <- full(mod_df %>% filter(freq %in% frequency & sex == "F") %>% select("int_age", "acc_inv"))
-mod_exhaustive_f <- exhaustive_ordered_serach(full_mod, n_bins = 3, variable = "acc_inv")
-
+mod_full_f <- full_ordered_search(full_mod, n_init = 52, n_bins = 3, variable = "acc_inv")
 mod_greedy_f <- stages_ordered_bhc(full_mod, n_init = 52, variable = "acc_inv")
 
 par(mfrow = c(1,2))
 plot(mod_greedy_f)
 title("Females - greedy")
-plot(mod_exhaustive_f)
+plot(mod_full_f)
 title("Females - full search")
 par(mfrow = c(1,1))
 
-# Exhaustive - males
+# full - males
 full_mod <- full(mod_df %>% filter(freq %in% frequency & sex == "M") %>% select("int_age", "acc_inv"))
-mod_exhaustive_m <- exhaustive_ordered_serach(full_mod, n_bins = 2, variable = "acc_inv")
-
+mod_full_m <- full_ordered_search(full_mod, n_init = 47, n_bins = 3, variable = "acc_inv")
 mod_greedy_m <- stages_ordered_bhc(full_mod, n_init = 47, variable = "acc_inv")
 
 par(mfrow = c(1,2))
 plot(mod_greedy_m)
 title("Males - greedy")
-plot(mod_exhaustive_m)
+plot(mod_full_m)
 title("Males - full search")
 par(mfrow = c(1,1))
+
+
+# Greedy all - females and males split
+full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("sex", "int_age", "acc_inv"), join_unobserved = FALSE)
+mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv", per_subset = FALSE)
+plot(mod_greedy_all)
+title("Males and females - full search")
+
+# full all - females and males split
+full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("sex", "int_age", "acc_inv"), join_unobserved = FALSE)
+mod_full_all <- full_ordered_search(full_mod, n_init = N_INIT, variable = "acc_inv", per_subset = TRUE)
+plot(mod_full_all)
+title("Males and females - full search")
 
 # -------------------------------------------------------------------------
 
@@ -260,16 +289,16 @@ mod_df %>%
 
 order <- c("int_age", "acc_inv")
 full_mod <- full(mod_df %>% filter(sex == "M") %>% select(order), lambda = 1)
-mod_male <- exhaustive_ordered_serach(full_mod, variable = "acc_inv")
+mod_male <- full_ordered_serach(full_mod, variable = "acc_inv")
 plot(mod_male)
 
 full_mod <- full(mod_df %>% filter(sex == "F") %>% select(order), lambda = 1)
-mod_female <- exhaustive_ordered_serach(full_mod, variable = "acc_inv")
+mod_female <- full_ordered_serach(full_mod, variable = "acc_inv")
 plot(mod_female)
 
 full_mod <- full(mod_df %>% select(order),  lambda = 1)
-mod_all4 <- exhaustive_ordered_serach(full_mod, n_bins = 4, variable = "acc_inv")
-mod_all3 <- exhaustive_ordered_serach(full_mod, n_bins = 3, variable = "acc_inv")
+mod_all4 <- full_ordered_serach(full_mod, n_bins = 4, variable = "acc_inv")
+mod_all3 <- full_ordered_serach(full_mod, n_bins = 3, variable = "acc_inv")
 base_mod_all <- stages_bhc(full_mod)
 greedy_mod_all <- stages_ordered_bhc(full_mod, n_init = length(full_mod$stages$acc_inv), variable = "acc_inv")
 
@@ -333,9 +362,9 @@ mod_df <- df %>%
 order <- c("miles_bin", "acc_inv")
 full_mod <- full(mod_df[,order], lambda = 0)
 greedy_mod <- stages_ordered_bhc(full_mod, n_init = length(full_mod$stages$acc_inv), variable = "acc_inv")
-best_mod3 <- exhaustive_ordered_serach(full_mod, n_bins = 3, variable = "acc_inv")
-best_mod4 <- exhaustive_ordered_serach(full_mod, n_bins = 4, variable = "acc_inv")
-best_mod5 <- stages_bhc(exhaustive_ordered_serach(full_mod, n_bins = 5, variable = "acc_inv"))
+best_mod3 <- full_ordered_serach(full_mod, n_bins = 3, variable = "acc_inv")
+best_mod4 <- full_ordered_serach(full_mod, n_bins = 4, variable = "acc_inv")
+best_mod5 <- stages_bhc(full_ordered_serach(full_mod, n_bins = 5, variable = "acc_inv"))
 default_mod <- stages_bhc(full_mod)
 
 plot(greedy_mod)
@@ -423,8 +452,8 @@ order <- c("daily_cut", "acc_inv")
 full_mod <- full(mod_df[,order], lambda = 0)
 basic_mod <- stages_bhc(full_mod)
 greedy_mod <- stages_ordered_bhc(full_mod, n_init = length(full_mod$stages$acc_inv), variable = "acc_inv")
-best_mod3 <- exhaustive_ordered_serach(full_mod, n_bins = 3, variable = "acc_inv")
-best_mod4 <- exhaustive_ordered_serach(full_mod, n_bins = 4, variable = "acc_inv")
+best_mod3 <- full_ordered_serach(full_mod, n_bins = 3, variable = "acc_inv")
+best_mod4 <- full_ordered_serach(full_mod, n_bins = 4, variable = "acc_inv")
 
 plot(basic_mod)
 plot(greedy_mod)
