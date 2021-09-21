@@ -21,7 +21,7 @@ frequency <- c(1,2)
 
 # Greedy all
 full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("age_group", "acc_inv"))
-mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = 20, variable = "acc_inv", per_subset = TRUE)
+mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = 20, variable = "acc_inv")
 plot(mod_greedy_all)
 title("Males and females - greedy")
 
@@ -31,15 +31,9 @@ mod_exhaustive_all <- exhaustive_ordered_search(full_mod, n_bins = 4, variable =
 plot(mod_exhaustive_all)
 title("Males and females - full search")
 
-# Greedy - males and females split: per subset = FALSE
+# Greedy - males and females split
 full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("sex", "age_group", "acc_inv"))
-mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv", per_subset = FALSE)
-plot(mod_greedy_all)
-title("Males and females - greedy search")
-
-# Greedy - males and females split: per subset = TRUE
-full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("sex", "age_group", "acc_inv"))
-mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv", per_subset = TRUE)
+mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv")
 plot(mod_greedy_all)
 title("Males and females - greedy search")
 
