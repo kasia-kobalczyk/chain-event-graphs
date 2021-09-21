@@ -1,5 +1,5 @@
 [submodule "stagedtrees"]
-	path = stagedtrees
+	path = R/stagedtrees
 	url = https://github.com/Kaasiak/stagedtrees/
 [submodule "chain-event-graphs-report"]
 	path = chain-event-graphs-report
