@@ -83,7 +83,7 @@ In our first attempt to CEG modelling we will only consider the first period of
 up to 6 months after passing the driving test.
 
 ```{r, include=TRUE}
-df_full <- read.table("../data/tab/unified_database_2014.tab", sep = "\t", header = TRUE)
+df_full <- read.table("../../data/tab/unified_database_2014.tab", sep = "\t", header = TRUE)
 
 impute_missing <- function(x) {ifelse(x < 0, NA, x)}
 

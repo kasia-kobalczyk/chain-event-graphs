@@ -826,7 +826,9 @@ class ceg(object):
 			'fontsize': 10, 
 			'shape': "circle", 
 			'width': 0.5, 
-			'size': 11.7
+			'size': 11.7,
+			'final_node_size': 0.4,
+			'display_edge_labels': True
 		}
 		param_values = [default_params[k] if k not in params else params[k] for k in default_params.keys()]
 		params = dict(zip(default_params.keys(), param_values))
@@ -839,10 +841,13 @@ class ceg(object):
 		)
 		for edge in self.edges:
 			edge_index = self.edges.index(edge)
-			if display_counts:	
-				edge_details = str(self.edge_labels[edge_index][-1])  + '\\n' + str(self.edge_counts[edge_index])
+			if params['display_edge_labels']:
+				if display_counts:	
+					edge_details = str(self.edge_labels[edge_index][-1])  + '\\n' + str(self.edge_counts[edge_index])
+				else:
+					edge_details = str(self.edge_labels[edge_index][-1])
 			else:
-				edge_details = str(self.edge_labels[edge_index][-1]) 
+				edge_details = "" 
 			event_tree_graph.add_edge(ptp.Edge(
 				edge[0], 
 				edge[1], 
@@ -857,7 +862,7 @@ class ceg(object):
 					name = node[0],
 					label = "",
 					shape = "circle",
-					width = 0.4, 
+					width = params['final_node_size'], 
 					style = "filled", 
 					fillcolor = "#666666"
 				))

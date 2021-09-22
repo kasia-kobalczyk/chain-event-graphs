@@ -1,11 +1,3 @@
-# mod_df <- df %>%
-#   filter(freq != 7) %>%
-#   mutate(freq = factor(if_else(freq %in% c(1,2,3), as.character(freq), "4"))) %>%
-#   group_by(sex) %>%
-#   mutate(age_group = cut_number(age, N_INIT)) %>%
-#   select(freq, hp, sex, age, age_group, acc_inv) %>%
-#   na.omit()
-
 # --------------------------- Equally sized initial groups
 N_INIT <- 20
 mod_df <- df %>%
@@ -21,56 +13,69 @@ frequency <- c(1,2)
 
 # Greedy all
 full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("age_group", "acc_inv"))
-mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = 20, variable = "acc_inv", per_subset = TRUE)
+mod_greedy_all <- stages_ordered_bhc(full_mod,  variable = "acc_inv", n_init = 20)
 plot(mod_greedy_all)
 title("Males and females - greedy")
 
 # full all
 full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("age_group", "acc_inv"))
-mod_full_all <- full_ordered_search(full_mod, n_init = N_INIT, n_bins = 4, variable = "acc_inv")
+mod_full_all <- stages_full_ordered_search(full_mod, n_init = N_INIT, n_bins = 4, variable = "acc_inv")
 plot(mod_full_all)
 title("Males and females - full search")
 
 # Greedy - males and females split
 full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("sex", "age_group", "acc_inv"))
-mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv", per_subset = FALSE)
+mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv")
 plot(mod_greedy_all)
 title("Males and females - greedy search")
 
-# Greedy - males and females split
+# full - males and females - 2 bins
 full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("sex", "age_group", "acc_inv"))
-mod_greedy_all <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv", per_subset = TRUE)
-plot(mod_greedy_all)
-title("Males and females - greedy search")
-
-# full - males and females
-full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("sex", "age_group", "acc_inv"))
-mod_full_all <- full_ordered_search(full_mod, n_init = N_INIT, n_bins = 4, variable = "acc_inv", per_subset = FALSE)
+mod_full_all <- stages_full_ordered_search(full_mod, n_init = N_INIT, n_bins = 2, variable = "acc_inv")
 plot(mod_full_all)
 title("Males and females - full search")
 
-# full - males and females
+# full - males and females - 3 bins
 full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("sex", "age_group", "acc_inv"))
-mod_full_all <- full_ordered_search(full_mod, n_init = N_INIT, n_bins = 4, variable = "acc_inv", per_subset = TRUE)
+mod_full_all <- stages_full_ordered_search(full_mod, n_init = N_INIT, n_bins = 3, variable = "acc_inv")
 plot(mod_full_all)
 title("Males and females - full search")
+
+# full - males and females - 4 bins
+full_mod <- full(mod_df %>% filter(freq %in% frequency) %>% select("sex", "age_group", "acc_inv"))
+mod_full_all <- stages_full_ordered_search(full_mod, n_init = N_INIT, n_bins = 4, variable = "acc_inv")
+plot(mod_full_all)
+title("Males and females - full search")
+
+# greedy - females
+full_mod <- full(mod_df %>% filter(freq %in% frequency & sex == "F") %>% select("age_group", "acc_inv"))
+greedy_mod_f <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv")
+
+# greedy - males
+full_mod <- full(mod_df %>% filter(freq %in% frequency & sex == "M") %>% select("age_group", "acc_inv"))
+greedy_mod_m <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv")
+
+par(mfrow = c(1,2))
+plot(greedy_mod_f)
+title("females")
+plot(greedy_mod_m)
+title("males")
+par(mfrow = c(1,1))
 
 # full - females
 full_mod <- full(mod_df %>% filter(freq %in% frequency & sex == "F") %>% select("age_group", "acc_inv"))
-mod_full_f <- full_ordered_search(full_mod, n_init = N_INIT, n_bins = 4, variable = "acc_inv")
+mod_full_f <- stages_full_ordered_search(full_mod, n_init = N_INIT, n_bins = 3, variable = "acc_inv")
 
 # full - males
 full_mod <- full(mod_df %>% filter(freq %in% frequency & sex == "M") %>% select("age_group", "acc_inv"))
-mod_full_m <- full_ordered_search(full_mod, n_init = N_INIT, n_bins = 4, variable = "acc_inv")
+mod_full_m <- stages_full_ordered_search(full_mod, n_init = N_INIT, n_bins = 3, variable = "acc_inv")
 
 par(mfrow = c(1,2))
-plot(mod_full_m)
-title("males")
 plot(mod_full_f)
 title("females")
+plot(mod_full_m)
+title("males")
 par(mfrow = c(1,1))
-
-
 
 # ------------------------------------------ Integer initial values
 mod_df <- df %>%
