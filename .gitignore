@@ -15,5 +15,8 @@ papers
 python/__pycache__
 python/figures/*
 
-# exclude MATLAB scripts
+# ignore MATLAB scripts
 *.m
+
+# ignore rendered notebooks
+R/*.html

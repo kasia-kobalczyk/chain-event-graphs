@@ -1,4 +1,4 @@
-#' This script generates the data frame for missing values
+#' This script generates the data frame for the missing responses model
 library(tidyverse)
 library(xtable)
 

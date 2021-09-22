@@ -1,11 +1,9 @@
-library(tidyverse)
-library(ggplot2)
-library(dplyr)
-library(bnlearn)
-library(scales)
-library(stagedtrees)
-library(tree)
+#' This script generates the data frames for the models of section 4. Chain Event Graphs
+#' and experiments in defining the defining the splits between continuous variables
+#' 
 
+library(tidyverse)
+library(dplyr)
 
 # Data Processing ---------------------------------------------------------
 
@@ -72,3 +70,13 @@ mod_miles_df <- df %>%
 
 write.csv(mod_freq_df, "../data/processed/miles_mod.csv")
 
+# Raw data for finding the age and mileage thresholds ---------------------
+
+base_mod_df <- df %>%
+  drop_na(sex, age, freq, acc_inv) %>%
+  mutate(freq = if_else(freq %in% c("3","4"), "3", as.character(freq)),
+         freq = factor(freq)) %>%
+  filter(freq %in% c("1","2","3")) %>%
+  select(age, sex, freq, miles, acc_inv)
+
+write.csv(base_mod_df, "../data/processed/base_mod.csv")
