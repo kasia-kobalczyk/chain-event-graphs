@@ -68,7 +68,7 @@ mod_miles_df <- df %>%
   filter(freq %in% c("1","2","3")) %>%
   select(age_group, sex, miles, acc_inv)
 
-write.csv(mod_freq_df, "../data/processed/miles_mod.csv")
+write.csv(mod_miles_df, "../data/processed/miles_mod.csv")
 
 # Raw data for finding the age and mileage thresholds ---------------------
 

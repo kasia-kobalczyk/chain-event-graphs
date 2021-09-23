@@ -77,6 +77,14 @@ plot(mod_full_m)
 title("males")
 par(mfrow = c(1,1))
 
+
+# three variables
+order <- c("freq","sex", "age_group", "acc_inv")
+full_mod <- full(mod_df[order], join_unobserved = FALSE)
+mod_greedy_all <- stages_ordered_bhc(full_mod,  score = function(x){-AIC(x)}, variable = "acc_inv", n_init = 20)
+plot(mod_greedy_all)
+title("Males and females - greedy")
+
 # ------------------------------------------ Integer initial values
 mod_df <- df %>%
   filter(freq != 7) %>%
