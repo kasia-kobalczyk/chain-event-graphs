@@ -440,7 +440,7 @@ class ceg(object):
 		for node in self.nodes:
 			stage_logic_values = [(node in stage) for stage in self._merged_situations] 
 			if all(value == (False) for value in stage_logic_values):
-				colours_for_situations.append((node, 'lightgrey'))
+				colours_for_situations.append((node, 'white'))
 			else:
 				colour_index = stage_logic_values.index((True))
 				colours_for_situations.append((node, stage_colours[colour_index]))
@@ -591,7 +591,7 @@ class ceg(object):
 		for position in ceg_positions:
 			position_colour = [pair for pair in self._stage_colours if pair[0] == position]
 			if len(position_colour) == 0:
-				colours_for_positions.append((position, 'lightgrey'))
+				colours_for_positions.append((position, 'white'))
 			else:
 				colours_for_positions.append(position_colour[0])
 		self._position_colours_optimal = colours_for_positions
@@ -728,7 +728,7 @@ class ceg(object):
 		for position in ceg_positions:
 			position_colour = [pair for pair in self._stage_colours if pair[0] == position]
 			if len(position_colour) == 0:
-				colours_for_positions.append((position, 'lightgrey'))
+				colours_for_positions.append((position, 'white'))
 			else:
 				colours_for_positions.append(position_colour[0])
 		self._position_colours = colours_for_positions
