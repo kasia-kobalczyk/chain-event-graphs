@@ -1,0 +1,26 @@
+digraph G {
+rankdir=LR;
+ranksep=1.0;
+size=11.7;
+"w_{0}" -> "w_{1}"  [color=black, fontsize="10.0", label="F\n63.9\%", labelfontcolor="#009933"];
+"w_{0}" -> "w_{2}"  [color=black, fontsize="10.0", label="M\n36.1\%", labelfontcolor="#009933"];
+"w_{1}" -> "w_{3}"  [color=black, fontsize="10.0", label="(18,22]\n23.3\%", labelfontcolor="#009933"];
+"w_{1}" -> "w_{4}"  [color=black, fontsize="10.0", label="(22,80]\n34.4\%", labelfontcolor="#009933"];
+"w_{1}" -> "w_{3}"  [color=black, fontsize="10.0", label="[16,18]\n42.3\%", labelfontcolor="#009933"];
+"w_{2}" -> "w_{3}"  [color=black, fontsize="10.0", label="(18,22]\n20.1\%", labelfontcolor="#009933"];
+"w_{2}" -> "w_{3}"  [color=black, fontsize="10.0", label="(22,80]\n24.7\%", labelfontcolor="#009933"];
+"w_{2}" -> "w_{8}"  [color=black, fontsize="10.0", label="[16,18]\n55.2\%", labelfontcolor="#009933"];
+"w_{3}" -> w_inf  [color=black, fontsize="10.0", label="0\n93.6\%", labelfontcolor="#009933"];
+"w_{3}" -> w_inf  [color=black, fontsize="10.0", label="1+\n6.4\%", labelfontcolor="#009933"];
+"w_{4}" -> w_inf  [color=black, fontsize="10.0", label="0\n97.1\%", labelfontcolor="#009933"];
+"w_{4}" -> w_inf  [color=black, fontsize="10.0", label="1+\n2.9\%", labelfontcolor="#009933"];
+"w_{8}" -> w_inf  [color=black, fontsize="10.0", label="0\n88.8\%", labelfontcolor="#009933"];
+"w_{8}" -> w_inf  [color=black, fontsize="10.0", label="1+\n11.2\%", labelfontcolor="#009933"];
+"w_{0}" [fillcolor=white, fixedsize=True, label="w_{0}", shape=circle, style=filled, width=0.5];
+"w_{1}" [fillcolor=white, fixedsize=True, label="w_{1}", shape=circle, style=filled, width=0.5];
+"w_{2}" [fillcolor=white, fixedsize=True, label="w_{2}", shape=circle, style=filled, width=0.5];
+"w_{3}" [fillcolor="#8dd3c7", fixedsize=True, label="w_{3}", shape=circle, style=filled, width=0.5];
+"w_{4}" [fillcolor=white, fixedsize=True, label="w_{4}", shape=circle, style=filled, width=0.5];
+"w_{8}" [fillcolor=white, fixedsize=True, label="w_{8}", shape=circle, style=filled, width=0.5];
+w_inf [fillcolor=white, fixedsize=True, label=w_inf, shape=circle, style=filled, width=0.5];
+}
