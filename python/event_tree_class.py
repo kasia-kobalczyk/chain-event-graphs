@@ -767,7 +767,7 @@ class ceg(object):
 		ceg_graph.write_png(str(filename) + '.png')
 		return Image(ceg_graph.create_png())
 
-	def ceg_figure_optimal(self, filename, return_raw = False, display_probs = True, params = dict()):
+	def ceg_figure_optimal(self, filename, return_raw = False, display_probs = True, display_pct = False, params = dict()):
 		'''to output the CEG obtained using our algorithm described in our paper. 
 		NOTE: comment out the decorator (@timeit) from the self._ceg_position_edges() function before running 
 		this function.
@@ -778,7 +778,8 @@ class ceg(object):
 			'shape': "circle", 
 			'width': 0.5, 
 			'style': "filled",
-			'size': 11.7
+			'size': 11.7,
+			'digit': 1
 		}
 		param_values = [default_params[k] if k not in params else params[k] for k in default_params.keys()]
 		params = dict(zip(default_params.keys(), param_values))
@@ -793,7 +794,10 @@ class ceg(object):
 		for edge_index in range(0, len(ceg_edges)):
 			edge = ceg_edges[edge_index]
 			if display_probs:
-				edge_details = str(ceg_edge_labels[edge_index][-1]) + '\n' + str(ceg_edge_counts[edge_index])
+				if display_pct:
+					edge_details = str(ceg_edge_labels[edge_index][-1]) + '\n' + str(round(ceg_edge_counts[edge_index] * 100, params['digit'])) + "\\%"
+				else:	
+					edge_details = str(ceg_edge_labels[edge_index][-1]) + '\n' + str(ceg_edge_counts[edge_index])
 			else:
 				edge_details = str(ceg_edge_labels[edge_index][-1])
 			ceg_graph.add_edge(ptp.Edge(
