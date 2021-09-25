@@ -11,7 +11,7 @@ data <- data %>%
   mutate(int_age = round(age)) %>%
   drop_na(sex, acc_inv)
 
-# Plots and EDA  --------------------------------------------------------------
+# Plots --------------------------------------------------------------
 
 data %>% ggplot(aes(x = int_age)) +
   geom_bar() +
@@ -24,7 +24,7 @@ data %>% ggplot(aes(x = int_age, fill = acc_inv)) +
   geom_bar(pos = "fill") +
   facet_wrap(~sex, ncol = 1)
 
-# ----------------------------------------------------------------------------
+# Discretising the Age -------------------------------------------------
 
 # Age -> Accident Involvement
 order <- c("int_age", "acc_inv")
@@ -52,12 +52,14 @@ subset <- data %>% filter(sex == "F")
 N_INIT <- length(unique(subset$int_age))
 full_mod <- full(subset, order, join_unobserved = FALSE)
 greedy_f <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv")
+full_f <- stages_full_ordered_search(full_mod, n_init = N_INIT, variable = "acc_inv")
 
 ## Males only
 subset <- data %>% filter(sex == "M")
 N_INIT <- length(unique(subset$int_age))
 full_mod <- full(subset, order, join_unobserved = FALSE)
 greedy_m <- stages_ordered_bhc(full_mod, n_init = N_INIT, variable = "acc_inv")
+full_m <- stages_full_ordered_search(full_mod, n_init = N_INIT, variable = "acc_inv")
 
 par(mfrow = c(1, 2))
 plot(greedy_f)
@@ -66,7 +68,14 @@ plot(greedy_m)
 title("males")
 par(mfrow = c(1, 1))
 
-# ----------------------------------------------------------------------------
+par(mfrow = c(1, 2))
+plot(full_f)
+title("females")
+plot(full_m)
+title("males")
+par(mfrow = c(1, 1))
+
+# Testing the methods -------------------------------------------------------
 
 #' Runs a model selection method and returns the fitted model together with the 
 #' ranges produced by the method and the running time of the algorithm
@@ -122,7 +131,6 @@ greedy3 <- test_method(data, order3, var = "int_age", target_var = "acc_inv", me
 full3_2 <- test_method(data, order3, var = "int_age", target_var = "acc_inv", method = "full", n_bins = 2)
 full3_3 <- test_method(data, order3, var = "int_age", target_var = "acc_inv", method = "full", n_bins = 3)
 
-# ----------------------------------------------------------------------------
 
 #' Fits two models - one with the var split into equally sized groups,
 #' one with the var split based on the provided ranges. 
@@ -162,9 +170,37 @@ compare2 <- compare_cegs(data, "sex", "int_age", "acc_inv", greedy2$ranges)
 plot(compare2$simple_mod)
 plot(compare2$new_mod)
 
-compare3 <- compare_cegs(data, c("freq", "sex"), "int_age", "acc_inv", greedy3$ranges)
+compare3 <- compare_cegs(data, c("freq", "sex"), "int_age", "acc_inv", full3_2$ranges)
 plot(compare3$simple_mod)
 plot(compare3$new_mod)
 
 
+# Export mod2 data to plot with GraphViz in python
+range <- greedy2$ranges
+breaks <- c(as.numeric(substr(range, 1, 2)), 80)
+mod_df <- data %>%
+  mutate(ef_age = cut_number(int_age, length(range)),
+         new_age = cut(int_age, breaks = breaks, 
+                             include.lowest = TRUE)) %>%
+  select(sex, ef_age, new_age, acc_inv)
+
+write.csv(mod_df, file = "../data/processed/split_age.csv")
+
+# Discretising the mileage ---------------------------------------------------
+
+data2 <- data %>%
+  filter(miles > 0) %>%
+  mutate(miles_cat = cut_width(miles, 2000),
+         miles_cat = droplevels.factor(miles_cat)) %>%
+  drop_na()
+order <- c("miles_cat", "acc_inv")
+plot(full(data2, order))
+greedy_miles <- test_method(data2, order, var = "miles_cat", target_var = "acc_inv", method = "greedy")
+full_miles_3 <- test_method(data2, order, var = "miles_cat", target_var = "acc_inv", method = "full", n_bins  = 3)
+full_miles_4 <- test_method(data2, order, var = "miles_cat", target_var = "acc_inv", method = "full", n_bins  = 4)
+full_miles_5 <- test_method(data2, order, var = "miles_cat", target_var = "acc_inv", method = "full", n_bins  = 5)
+plot(greedy$model)
+plot(full_miles_3$model)
+plot(full_miles_4$model)
+plot(full_miles_5$model)
 
