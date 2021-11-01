@@ -2,3 +2,6 @@
 	path = R/stagedtrees
 	url = https://github.com/Kaasiak/stagedtrees/
 
+[submodule "report"]
+	path = chain-event-graphs-report
+	url = https://github.com/Kaasiak/chain-event-graphs-report
