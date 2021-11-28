@@ -1,0 +1,5 @@
+- `01-report-model.R` - generates the data for the models of section 4. Chain Event Graphs and experiments in defining the defining the splits between continuous variables
+- `02-report-models.R` - generates the data for the missing responses model from section 5.
+- `03-discretising.R` - code for determining the best value of splits between different categories of age and mileage using the proposed method for supevised data discretisation
+- `stagedtrees` - submodule to the original `stagedtress` package extended by new methods
+- `sandbox` - EDA scritps 

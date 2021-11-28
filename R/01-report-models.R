@@ -1,6 +1,6 @@
-#' This script generates the data frames for the models of section 4. Chain Event Graphs
-#' and experiments in defining the defining the splits between continuous variables
-#' 
+#' This script generates the data frames for the models of section 4. 
+#' Chain Event Graphs and experiments in defining the defining the splits 
+#' between continuous variables
 
 library(tidyverse)
 library(dplyr)
