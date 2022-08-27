@@ -20,3 +20,5 @@ python/figures/*
 
 # ignore rendered notebooks
 R/*.html
+
+figures/*
