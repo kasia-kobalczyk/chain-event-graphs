@@ -14,6 +14,7 @@ papers
 
 python/__pycache__
 python/figures/*
+.ipynb_checkpoints
 
 # ignore MATLAB scripts
 *.m
