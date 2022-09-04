@@ -27,6 +27,7 @@ Chain Event Graphs (CEGs) are a family of graphical sta-tistical models derived 
 - `R` - contains the R scripts for data processing, EDA and the `stagedtrees` submodule with custom algorithms for stage partitioning
 - `python` - contains the python scripts used for fitting the CEGs and generating the final graphs for the report
 - `chain-event-graphs-report` - submodule with the final .tex report 
+- `ceg-workshops` - submodule with the workshops for CEG Conference, Uniersity of Warwick, September 2022
 - `data` - contains raw data (content git ignored, data are safeguarded)
 
 
