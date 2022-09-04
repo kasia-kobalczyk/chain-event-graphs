@@ -1,0 +1,4 @@
+cegpy
+matplotlib
+seaborn
+pandas
