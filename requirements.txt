@@ -1,6 +1,0 @@
-cegpy
-matplotlib
-seaborn
-pandas
-bnlearn
-networkx
