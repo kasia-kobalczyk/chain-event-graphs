@@ -2,3 +2,4 @@ cegpy
 matplotlib
 seaborn
 pandas
+bnlearn
