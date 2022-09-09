@@ -3,7 +3,9 @@
 [![Language](https://img.shields.io/badge/language-Python_3-54a4ff.svg?style=flat-square)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-MIT-bb86f7.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
-This repository contains scripts supporting my research about Chain Event Graphs conducted under the Undergraduate Research Support Scheme at the University of Warwick in the summer 2021. The final report detailing work available at: [link](https://urss.warwick.ac.uk/items/show/129).
+This repository contains scripts supporting my research about Chain Event Graphs conducted under the Undergraduate Research Support Scheme at the University of Warwick in the summer 2021. The final report detailing my work available at: [link](https://urss.warwick.ac.uk/items/show/129).
+
+In September 2022, I run workshops during the CEG Conference at Warwick University. A self-contained jupyter notebook from the workshops is available on binder [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/Kaasiak/ceg-workshops/HEAD?labpath=ceg-workshops.ipynb).
 
 ### Abstract
 Chain Event Graphs (CEGs) are a family of graphical sta-tistical models derived from well-known probability trees. They form ageneralisation  of  Bayesian  Networks,  providing  an  explicit  representa-tion of context-specific conditional dependencies within their topology.This report demonstrates on a real cohort study how CEGs enable usto depict various hypotheses about the data generation mechanisms. Weargue that CEGs, in contrast to the standard framework of generalisedlinear models, can exhibit dependencies between multiple variables in amuch  more  intuitive  way.  We  also  present  how  CEGs  can  be  used  forstatistical inference with incomplete data set, identifying if the data aremissing at random and extracting further conclusions from the patternsof missingness. We additionally discuss the problem of data discretisa-tion and propose a method for supervised discretisation without leavingthe framework of tree-based models.
